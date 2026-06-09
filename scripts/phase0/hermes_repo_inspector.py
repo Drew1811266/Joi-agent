@@ -26,25 +26,37 @@ def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
-def _load_pyproject(root: Path) -> dict[str, str]:
+def _load_pyproject(root: Path) -> tuple[dict[str, str], str | None]:
     path = root / "pyproject.toml"
     if not path.exists():
-        return {"name": "", "version": "", "requires_python": ""}
-    with path.open("rb") as handle:
-        data = tomllib.load(handle)
+        return {"name": "", "version": "", "requires_python": ""}, None
+    try:
+        with path.open("rb") as handle:
+            data = tomllib.load(handle)
+    except tomllib.TOMLDecodeError as exc:
+        return (
+            {"name": "", "version": "", "requires_python": ""},
+            f"Malformed pyproject.toml: {exc}",
+        )
     project = data.get("project", {})
     return {
         "name": str(project.get("name", "")),
         "version": str(project.get("version", "")),
         "requires_python": str(project.get("requires-python", "")),
-    }
+    }, None
 
 
-def _load_desktop_package(root: Path) -> dict[str, Any]:
+def _load_desktop_package(root: Path) -> tuple[dict[str, Any], str | None]:
     path = root / "apps/desktop/package.json"
     if not path.exists():
-        return {"present": False, "name": "", "version": "", "dependency_count": 0}
-    data = json.loads(_read_text(path))
+        return {"present": False, "name": "", "version": "", "dependency_count": 0}, None
+    try:
+        data = json.loads(_read_text(path))
+    except json.JSONDecodeError as exc:
+        return (
+            {"present": True, "name": "", "version": "", "dependency_count": 0},
+            f"Malformed apps/desktop/package.json: {exc}",
+        )
     dependencies = data.get("dependencies", {})
     dev_dependencies = data.get("devDependencies", {})
     return {
@@ -52,7 +64,7 @@ def _load_desktop_package(root: Path) -> dict[str, Any]:
         "name": str(data.get("name", "")),
         "version": str(data.get("version", "")),
         "dependency_count": len(dependencies) + len(dev_dependencies),
-    }
+    }, None
 
 
 def _module_registers_tool(path: Path) -> bool:
@@ -67,7 +79,12 @@ def _module_registers_tool(path: Path) -> bool:
         if not isinstance(call, ast.Call):
             continue
         func = call.func
-        if isinstance(func, ast.Attribute) and func.attr == "register":
+        if (
+            isinstance(func, ast.Attribute)
+            and func.attr == "register"
+            and isinstance(func.value, ast.Name)
+            and func.value.id == "registry"
+        ):
             return True
     return False
 
@@ -95,9 +112,11 @@ def _has_text(root: Path, relative_path: str, needle: str) -> bool:
 
 def inspect_checkout(root: str | Path) -> dict[str, Any]:
     checkout = Path(root).resolve()
+    errors: list[str] = []
     missing = [relative for relative in REQUIRED_PATHS if not (checkout / relative).exists()]
-    project = _load_pyproject(checkout)
-    desktop = _load_desktop_package(checkout)
+    project, pyproject_error = _load_pyproject(checkout)
+    desktop, desktop_error = _load_desktop_package(checkout)
+    errors.extend(error for error in (pyproject_error, desktop_error) if error)
     counts = {
         "registered_tool_files": _count_registered_tool_files(checkout),
         "skills": _count_skill_files(checkout, "skills"),
@@ -112,11 +131,12 @@ def inspect_checkout(root: str | Path) -> dict[str, Any]:
         "has_mcp_server": (checkout / "mcp_serve.py").exists(),
         "has_desktop_app": desktop["present"],
     }
-    status = "pass" if not missing and project["name"] == "hermes-agent" else "fail"
+    status = "pass" if not missing and not errors and project["name"] == "hermes-agent" else "fail"
     return {
         "status": status,
         "checkout": str(checkout),
         "missing_required_paths": missing,
+        "errors": errors,
         "project": project,
         "desktop": desktop,
         "counts": counts,
