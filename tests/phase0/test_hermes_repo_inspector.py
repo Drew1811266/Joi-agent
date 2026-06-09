@@ -1,3 +1,6 @@
+import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -131,6 +134,31 @@ class HermesRepoInspectorTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             self.assertTrue(output.exists())
             self.assertIn("\"status\": \"pass\"", output.read_text(encoding="utf-8"))
+
+    def test_inspection_cli_supports_file_path_invocation(self) -> None:
+        repo_root = Path(__file__).resolve().parents[2]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "checkout"
+            output = Path(tmp) / "inspection.json"
+            write_valid_checkout(root)
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "scripts/phase0/inspect_hermes.py",
+                    str(root),
+                    "--output",
+                    str(output),
+                ],
+                cwd=repo_root,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(completed.returncode, 0, msg=completed.stderr)
+            self.assertTrue(output.exists())
+            self.assertEqual(json.loads(output.read_text(encoding="utf-8"))["status"], "pass")
 
 
 if __name__ == "__main__":
