@@ -10,7 +10,11 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
-$externalRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot ".external"))
+$externalRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot ".external")).TrimEnd(
+  [System.IO.Path]::DirectorySeparatorChar,
+  [System.IO.Path]::AltDirectorySeparatorChar
+)
+$externalRootWithSeparator = "$externalRoot$([System.IO.Path]::DirectorySeparatorChar)"
 if ([string]::IsNullOrWhiteSpace($Destination)) {
   $Destination = Join-Path $externalRoot "hermes-agent"
 }
@@ -53,7 +57,7 @@ if ($PlanOnly) {
   exit 0
 }
 
-if (-not $destinationFull.StartsWith($externalRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+if (-not $destinationFull.StartsWith($externalRootWithSeparator, [System.StringComparison]::OrdinalIgnoreCase)) {
   throw "Destination must stay inside $externalRoot. Received: $destinationFull"
 }
 
