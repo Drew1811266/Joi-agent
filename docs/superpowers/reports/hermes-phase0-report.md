@@ -29,6 +29,10 @@ Checkout: D:\Software Project\Joi-agent\.external\hermes-agent
 
 - none
 
+## Inspector Errors
+
+- none
+
 ## Phase 0 Decision
 
 Joi Runtime initial decision: keep most Hermes Core.

@@ -5,13 +5,64 @@ import json
 from pathlib import Path
 from typing import Any, Sequence
 
+_REQUIRED_RUNTIME_CAPABILITIES = (
+    ("has_toolsets", "toolsets"),
+    ("has_memory_tool", "memory"),
+    ("has_vision_tool", "vision"),
+    ("has_image_generation_tool", "image generation"),
+    ("has_video_generation_tool", "video generation"),
+    ("has_mcp_server", "MCP server"),
+    ("has_desktop_app", "desktop app"),
+)
+
 
 def _yes_no(value: Any) -> str:
     return "yes" if bool(value) else "no"
 
 
+def _phase0_blockers(inspection: dict[str, Any]) -> list[str]:
+    status = str(inspection.get("status", "fail"))
+    missing = inspection.get("missing_required_paths", [])
+    errors = inspection.get("errors", [])
+    capabilities = inspection.get("capabilities", {})
+    blockers: list[str] = []
+
+    if status != "pass":
+        blockers.append(f"inspection status is {status}")
+    if missing:
+        blockers.append("required paths are missing")
+    if errors:
+        blockers.append("inspector errors are present")
+
+    missing_capabilities = [
+        label for key, label in _REQUIRED_RUNTIME_CAPABILITIES if not capabilities.get(key)
+    ]
+    if missing_capabilities:
+        blockers.append("runtime capabilities missing: " + ", ".join(missing_capabilities))
+
+    return blockers
+
+
+def _decision_lines(inspection: dict[str, Any]) -> list[str]:
+    blockers = _phase0_blockers(inspection)
+    if not blockers:
+        return [
+            "Joi Runtime initial decision: keep most Hermes Core.",
+            "",
+            "This validation phase confirms whether Hermes provides the runtime surface needed by Joi before Tauri desktop and domain workflow work begins.",
+        ]
+
+    return [
+        "Joi Runtime initial decision: blocked pending Phase 0 fixes.",
+        "",
+        "Phase 0 blockers:",
+        *(f"- {blocker}" for blocker in blockers),
+    ]
+
+
 def render_report(inspection: dict[str, Any]) -> str:
     missing = inspection.get("missing_required_paths", [])
+    errors = inspection.get("errors", [])
     project = inspection.get("project", {})
     desktop = inspection.get("desktop", {})
     counts = inspection.get("counts", {})
@@ -54,16 +105,13 @@ def render_report(inspection: dict[str, Any]) -> str:
     else:
         lines.append("- none")
 
-    lines.extend(
-        [
-            "",
-            "## Phase 0 Decision",
-            "",
-            "Joi Runtime initial decision: keep most Hermes Core.",
-            "",
-            "This validation phase confirms whether Hermes provides the runtime surface needed by Joi before Tauri desktop and domain workflow work begins.",
-        ]
-    )
+    lines.extend(["", "## Inspector Errors", ""])
+    if errors:
+        lines.extend(f"- {item}" for item in errors)
+    else:
+        lines.append("- none")
+
+    lines.extend(["", "## Phase 0 Decision", "", *_decision_lines(inspection)])
     return "\n".join(lines) + "\n"
 
 
