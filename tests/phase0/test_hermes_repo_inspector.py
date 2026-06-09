@@ -1,0 +1,75 @@
+import tempfile
+import unittest
+from pathlib import Path
+
+from scripts.phase0.hermes_repo_inspector import inspect_checkout
+
+
+def write_file(root: Path, relative_path: str, content: str) -> None:
+    target = root / relative_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+
+
+class HermesRepoInspectorTests(unittest.TestCase):
+    def test_valid_checkout_returns_runtime_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_file(root, "README.md", "# Hermes Agent\n")
+            write_file(root, "LICENSE", "MIT License\n")
+            write_file(
+                root,
+                "pyproject.toml",
+                (
+                    "[project]\n"
+                    "name = \"hermes-agent\"\n"
+                    "version = \"0.16.0\"\n"
+                    "requires-python = \">=3.11,<3.14\"\n"
+                ),
+            )
+            write_file(root, "run_agent.py", "def main():\n    return None\n")
+            write_file(root, "model_tools.py", "def handle_function_call():\n    return None\n")
+            write_file(root, "toolsets.py", "TOOLSETS = {\"vision\": {\"tools\": [\"vision_analyze\"]}}\n")
+            write_file(root, "agent/__init__.py", "")
+            write_file(root, "tools/registry.py", "class Registry:\n    pass\n")
+            write_file(
+                root,
+                "tools/example_tool.py",
+                "from tools.registry import registry\nregistry.register(name=\"example\", toolset=\"test\", schema={}, handler=lambda args: args)\n",
+            )
+            write_file(root, "skills/example/SKILL.md", "---\nname: example\n---\n# Example\n")
+            write_file(root, "optional-skills/example/SKILL.md", "---\nname: optional\n---\n# Optional\n")
+            write_file(root, "website/docs/developer-guide/architecture.md", "# Architecture\n")
+            write_file(
+                root,
+                "apps/desktop/package.json",
+                "{\"name\":\"hermes\",\"version\":\"0.15.1\",\"dependencies\":{\"react\":\"^19.0.0\"}}\n",
+            )
+
+            result = inspect_checkout(root)
+
+            self.assertEqual(result["status"], "pass")
+            self.assertEqual(result["project"]["name"], "hermes-agent")
+            self.assertEqual(result["project"]["version"], "0.16.0")
+            self.assertEqual(result["project"]["requires_python"], ">=3.11,<3.14")
+            self.assertEqual(result["desktop"]["version"], "0.15.1")
+            self.assertEqual(result["counts"]["registered_tool_files"], 1)
+            self.assertEqual(result["counts"]["skills"], 1)
+            self.assertEqual(result["counts"]["optional_skills"], 1)
+            self.assertTrue(result["capabilities"]["has_toolsets"])
+            self.assertTrue(result["capabilities"]["has_desktop_app"])
+
+    def test_missing_required_paths_marks_checkout_failed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_file(root, "README.md", "# Partial\n")
+
+            result = inspect_checkout(root)
+
+            self.assertEqual(result["status"], "fail")
+            self.assertIn("pyproject.toml", result["missing_required_paths"])
+            self.assertIn("tools", result["missing_required_paths"])
+
+
+if __name__ == "__main__":
+    unittest.main()
