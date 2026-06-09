@@ -104,6 +104,34 @@ class HermesRepoInspectorTests(unittest.TestCase):
             self.assertTrue(any("pyproject.toml" in error for error in result["errors"]))
             self.assertTrue(any("apps/desktop/package.json" in error for error in result["errors"]))
 
+    def test_inspection_cli_writes_json_file(self) -> None:
+        from scripts.phase0.inspect_hermes import main
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "checkout"
+            output = Path(tmp) / "inspection.json"
+            write_file(root, "README.md", "# Hermes Agent\n")
+            write_file(root, "LICENSE", "MIT License\n")
+            write_file(
+                root,
+                "pyproject.toml",
+                "[project]\nname = \"hermes-agent\"\nversion = \"0.16.0\"\nrequires-python = \">=3.11,<3.14\"\n",
+            )
+            write_file(root, "run_agent.py", "")
+            write_file(root, "model_tools.py", "")
+            write_file(root, "toolsets.py", "TOOLSETS = {}\n")
+            write_file(root, "agent/__init__.py", "")
+            write_file(root, "tools/registry.py", "")
+            write_file(root, "skills/example/SKILL.md", "# Example\n")
+            write_file(root, "optional-skills/example/SKILL.md", "# Optional\n")
+            write_file(root, "website/docs/developer-guide/architecture.md", "# Architecture\n")
+
+            exit_code = main([str(root), "--output", str(output)])
+
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(output.exists())
+            self.assertIn("\"status\": \"pass\"", output.read_text(encoding="utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main()
