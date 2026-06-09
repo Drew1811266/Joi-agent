@@ -9,16 +9,20 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
-$externalRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot ".external")).TrimEnd(
-  [System.IO.Path]::DirectorySeparatorChar,
-  [System.IO.Path]::AltDirectorySeparatorChar
-)
-$externalRootWithSeparator = "$externalRoot$([System.IO.Path]::DirectorySeparatorChar)"
+function Normalize-FullPathForBoundary([string]$Path) {
+  return [System.IO.Path]::GetFullPath($Path).TrimEnd(
+    [System.IO.Path]::DirectorySeparatorChar,
+    [System.IO.Path]::AltDirectorySeparatorChar
+  )
+}
+
+$repoRoot = Normalize-FullPathForBoundary (Join-Path $PSScriptRoot "..\..")
+$externalRoot = Normalize-FullPathForBoundary (Join-Path $repoRoot ".external")
 if ([string]::IsNullOrWhiteSpace($Destination)) {
   $Destination = Join-Path $externalRoot "hermes-agent"
 }
-$destinationFull = [System.IO.Path]::GetFullPath($Destination)
+$destinationFull = Normalize-FullPathForBoundary $Destination
+$externalRootWithSeparator = $externalRoot + [System.IO.Path]::DirectorySeparatorChar
 
 $sparsePaths = @(
   "README.md",
@@ -47,6 +51,10 @@ $sparsePaths = @(
   "apps/desktop/README.md"
 )
 
+if (-not $destinationFull.StartsWith($externalRootWithSeparator, [System.StringComparison]::OrdinalIgnoreCase)) {
+  throw "Destination must stay inside $externalRoot. Received: $destinationFull"
+}
+
 if ($PlanOnly) {
   [PSCustomObject]@{
     repo_url = $RepoUrl
@@ -55,10 +63,6 @@ if ($PlanOnly) {
     sparse_paths = $sparsePaths
   } | ConvertTo-Json -Depth 4
   exit 0
-}
-
-if (-not $destinationFull.StartsWith($externalRootWithSeparator, [System.StringComparison]::OrdinalIgnoreCase)) {
-  throw "Destination must stay inside $externalRoot. Received: $destinationFull"
 }
 
 New-Item -ItemType Directory -Force -Path $externalRoot | Out-Null
