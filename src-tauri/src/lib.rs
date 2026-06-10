@@ -1,4 +1,7 @@
 mod commands;
+mod error;
+mod models;
+mod validation;
 
 pub fn run() {
     tauri::Builder::default()
