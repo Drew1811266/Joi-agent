@@ -356,6 +356,11 @@ impl<'a> Repository<'a> {
     }
 
     pub fn create_shot(&self, input: ShotCreate) -> JoiResult<Shot> {
+        if input.shot_number <= 0 {
+            return Err(JoiError::Validation(
+                "Shot number must be positive".to_string(),
+            ));
+        }
         validate_non_negative("Shot duration", input.duration_seconds)?;
         let now = Utc::now();
         let shot = Shot {
@@ -504,6 +509,21 @@ fn parse_json(value: String, column_index: usize) -> rusqlite::Result<serde_json
     })
 }
 
+fn parse_bool(value: i64, column_index: usize) -> rusqlite::Result<bool> {
+    match value {
+        0 => Ok(false),
+        1 => Ok(true),
+        other => Err(rusqlite::Error::FromSqlConversionFailure(
+            column_index,
+            rusqlite::types::Type::Integer,
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("invalid boolean value: {}", other),
+            )),
+        )),
+    }
+}
+
 fn map_brand(row: &rusqlite::Row<'_>) -> rusqlite::Result<Brand> {
     Ok(Brand {
         id: row.get(0)?,
@@ -560,7 +580,7 @@ fn map_shot(row: &rusqlite::Row<'_>) -> rusqlite::Result<Shot> {
         lighting: row.get(8)?,
         subtitle_or_voiceover: row.get(9)?,
         rationale: row.get(10)?,
-        is_locked: row.get::<_, i64>(11)? == 1,
+        is_locked: parse_bool(row.get(11)?, 11)?,
         metadata_json: parse_json(row.get(12)?, 12)?,
         created_at: parse_time(row.get(13)?, 13)?,
         updated_at: parse_time(row.get(14)?, 14)?,
@@ -577,7 +597,7 @@ fn map_prompt_package(row: &rusqlite::Row<'_>) -> rusqlite::Result<PromptPackage
         prompt_text: row.get(5)?,
         negative_prompt: row.get(6)?,
         parameters_json: parse_json(row.get(7)?, 7)?,
-        is_locked: row.get::<_, i64>(8)? == 1,
+        is_locked: parse_bool(row.get(8)?, 8)?,
         created_at: parse_time(row.get(9)?, 9)?,
         updated_at: parse_time(row.get(10)?, 10)?,
     })
