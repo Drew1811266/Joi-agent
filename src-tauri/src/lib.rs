@@ -1,6 +1,7 @@
 pub mod assets;
 pub mod db;
 pub mod error;
+pub mod project_package;
 pub mod repositories;
 pub mod snapshots;
 
