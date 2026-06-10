@@ -181,17 +181,25 @@ fn collect_rows<T>(rows: impl Iterator<Item = rusqlite::Result<T>>) -> JoiResult
     Ok(values)
 }
 
-fn parse_time(value: String) -> rusqlite::Result<chrono::DateTime<Utc>> {
+fn parse_time(value: String, column_index: usize) -> rusqlite::Result<chrono::DateTime<Utc>> {
     chrono::DateTime::parse_from_rfc3339(&value)
         .map(|value| value.with_timezone(&Utc))
         .map_err(|err| {
-            rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(err))
+            rusqlite::Error::FromSqlConversionFailure(
+                column_index,
+                rusqlite::types::Type::Text,
+                Box::new(err),
+            )
         })
 }
 
-fn parse_json(value: String) -> rusqlite::Result<serde_json::Value> {
+fn parse_json(value: String, column_index: usize) -> rusqlite::Result<serde_json::Value> {
     serde_json::from_str(&value).map_err(|err| {
-        rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(err))
+        rusqlite::Error::FromSqlConversionFailure(
+            column_index,
+            rusqlite::types::Type::Text,
+            Box::new(err),
+        )
     })
 }
 
@@ -200,14 +208,14 @@ fn map_brand(row: &rusqlite::Row<'_>) -> rusqlite::Result<Brand> {
         id: row.get(0)?,
         name: row.get(1)?,
         description: row.get(2)?,
-        style_keywords: parse_json(row.get(3)?)?,
-        visual_preferences: parse_json(row.get(4)?)?,
-        negative_preferences: parse_json(row.get(5)?)?,
-        common_scenes: parse_json(row.get(6)?)?,
-        model_preferences: parse_json(row.get(7)?)?,
-        platform_preferences: parse_json(row.get(8)?)?,
-        created_at: parse_time(row.get(9)?)?,
-        updated_at: parse_time(row.get(10)?)?,
+        style_keywords: parse_json(row.get(3)?, 3)?,
+        visual_preferences: parse_json(row.get(4)?, 4)?,
+        negative_preferences: parse_json(row.get(5)?, 5)?,
+        common_scenes: parse_json(row.get(6)?, 6)?,
+        model_preferences: parse_json(row.get(7)?, 7)?,
+        platform_preferences: parse_json(row.get(8)?, 8)?,
+        created_at: parse_time(row.get(9)?, 9)?,
+        updated_at: parse_time(row.get(10)?, 10)?,
     })
 }
 
@@ -218,11 +226,11 @@ fn map_project(row: &rusqlite::Row<'_>) -> rusqlite::Result<Project> {
         title: row.get(2)?,
         advertising_goal: row.get(3)?,
         duration_seconds: row.get(4)?,
-        target_platforms: parse_json(row.get(5)?)?,
+        target_platforms: parse_json(row.get(5)?, 5)?,
         workflow_stage: row.get(6)?,
         current_version_id: row.get(7)?,
         final_version_id: row.get(8)?,
-        created_at: parse_time(row.get(9)?)?,
-        updated_at: parse_time(row.get(10)?)?,
+        created_at: parse_time(row.get(9)?, 9)?,
+        updated_at: parse_time(row.get(10)?, 10)?,
     })
 }

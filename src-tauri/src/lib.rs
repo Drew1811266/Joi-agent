@@ -1,8 +1,8 @@
 pub mod db;
+pub mod error;
 pub mod repositories;
 
 mod commands;
-mod error;
 mod models;
 mod validation;
 
