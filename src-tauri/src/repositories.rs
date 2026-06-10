@@ -4,8 +4,8 @@ use serde_json::json;
 
 use crate::error::{JoiError, JoiResult};
 use crate::models::{
-    new_id, Brand, CreativeDirection, ProductUnderstanding, Project, PromptModality, PromptPackage,
-    PromptPlatform, ResearchReport, Shot, Storyboard,
+    new_id, Asset, AssetKind, Brand, CreativeDirection, ProductUnderstanding, Project,
+    PromptModality, PromptPackage, PromptPlatform, ResearchReport, Shot, Storyboard,
 };
 use crate::validation::{validate_non_negative, validate_prompt_modality, validate_required_text};
 
@@ -25,6 +25,18 @@ pub struct ProjectCreate {
     pub title: String,
     pub advertising_goal: String,
     pub duration_seconds: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct AssetCreate {
+    pub project_id: String,
+    pub kind: String,
+    pub display_name: String,
+    pub relative_path: String,
+    pub source_uri: String,
+    pub mime_type: String,
+    pub file_size_bytes: i64,
+    pub sha256: String,
 }
 
 #[derive(Debug, Clone)]
@@ -217,6 +229,47 @@ impl<'a> Repository<'a> {
                 }
                 other => other.into(),
             })
+    }
+
+    pub fn create_asset(&self, input: AssetCreate) -> JoiResult<Asset> {
+        let kind = AssetKind::try_from(input.kind.as_str())?;
+        self.get_project(&input.project_id)?;
+        let now = Utc::now();
+        let asset = Asset {
+            id: new_id(),
+            project_id: input.project_id,
+            kind: kind.as_str().to_string(),
+            display_name: input.display_name,
+            relative_path: input.relative_path,
+            source_uri: input.source_uri,
+            mime_type: input.mime_type,
+            file_size_bytes: input.file_size_bytes,
+            sha256: input.sha256,
+            metadata_json: json!({}),
+            created_at: now,
+            updated_at: now,
+        };
+        self.connection.execute(
+            "INSERT INTO assets (
+                id, project_id, kind, display_name, relative_path, source_uri, mime_type,
+                file_size_bytes, sha256, metadata_json, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            params![
+                asset.id,
+                asset.project_id,
+                asset.kind,
+                asset.display_name,
+                asset.relative_path,
+                asset.source_uri,
+                asset.mime_type,
+                asset.file_size_bytes,
+                asset.sha256,
+                asset.metadata_json.to_string(),
+                asset.created_at.to_rfc3339(),
+                asset.updated_at.to_rfc3339()
+            ],
+        )?;
+        Ok(asset)
     }
 
     pub fn create_research_report(&self, input: ResearchReportCreate) -> JoiResult<ResearchReport> {
@@ -477,6 +530,16 @@ impl<'a> Repository<'a> {
         let rows = statement.query_map(params![project_id], map_prompt_package)?;
         collect_rows(rows)
     }
+
+    pub fn list_assets(&self, project_id: &str) -> JoiResult<Vec<Asset>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, project_id, kind, display_name, relative_path, source_uri, mime_type,
+                    file_size_bytes, sha256, metadata_json, created_at, updated_at
+             FROM assets WHERE project_id = ?1 ORDER BY created_at ASC",
+        )?;
+        let rows = statement.query_map(params![project_id], map_asset)?;
+        collect_rows(rows)
+    }
 }
 
 fn collect_rows<T>(rows: impl Iterator<Item = rusqlite::Result<T>>) -> JoiResult<Vec<T>> {
@@ -553,6 +616,23 @@ fn map_project(row: &rusqlite::Row<'_>) -> rusqlite::Result<Project> {
         final_version_id: row.get(8)?,
         created_at: parse_time(row.get(9)?, 9)?,
         updated_at: parse_time(row.get(10)?, 10)?,
+    })
+}
+
+fn map_asset(row: &rusqlite::Row<'_>) -> rusqlite::Result<Asset> {
+    Ok(Asset {
+        id: row.get(0)?,
+        project_id: row.get(1)?,
+        kind: row.get(2)?,
+        display_name: row.get(3)?,
+        relative_path: row.get(4)?,
+        source_uri: row.get(5)?,
+        mime_type: row.get(6)?,
+        file_size_bytes: row.get(7)?,
+        sha256: row.get(8)?,
+        metadata_json: parse_json(row.get(9)?, 9)?,
+        created_at: parse_time(row.get(10)?, 10)?,
+        updated_at: parse_time(row.get(11)?, 11)?,
     })
 }
 
