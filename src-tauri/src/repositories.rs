@@ -4,9 +4,9 @@ use serde_json::json;
 
 use crate::error::{JoiError, JoiResult};
 use crate::models::{
-    new_id, Asset, AssetKind, Brand, CreativeDirection, MemoryEntry, ProductUnderstanding, Project,
-    ProjectVersion, PromptModality, PromptPackage, PromptPlatform, ResearchReport, Shot,
-    Storyboard,
+    new_id, Asset, AssetKind, Brand, CreativeDirection, MemoryEntry, MemoryScope, MemoryStatus,
+    ProductUnderstanding, Project, ProjectVersion, PromptModality, PromptPackage, PromptPlatform,
+    ResearchReport, Shot, Storyboard,
 };
 use crate::validation::{validate_non_negative, validate_prompt_modality, validate_required_text};
 
@@ -82,6 +82,15 @@ pub struct PromptPackageCreate {
     pub platform: String,
     pub modality: String,
     pub prompt_text: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct MemoryEntryCreate {
+    pub scope: String,
+    pub brand_id: Option<String>,
+    pub project_id: Option<String>,
+    pub content: String,
+    pub source: String,
 }
 
 impl<'a> Repository<'a> {
@@ -573,6 +582,73 @@ impl<'a> Repository<'a> {
         Ok(prompt)
     }
 
+    pub fn create_memory_entry(&self, input: MemoryEntryCreate) -> JoiResult<MemoryEntry> {
+        let scope = MemoryScope::try_from(input.scope.as_str())?;
+        validate_required_text("Memory content", &input.content)?;
+
+        match scope {
+            MemoryScope::User => {
+                if input.brand_id.is_some() || input.project_id.is_some() {
+                    return Err(JoiError::Validation(
+                        "user memory must not include brand_id or project_id".to_string(),
+                    ));
+                }
+            }
+            MemoryScope::Brand => {
+                let brand_id = input.brand_id.as_deref().ok_or_else(|| {
+                    JoiError::Validation("brand memory requires brand_id".to_string())
+                })?;
+                self.get_brand(brand_id)?;
+            }
+            MemoryScope::Project => {
+                let project_id = input.project_id.as_deref().ok_or_else(|| {
+                    JoiError::Validation("project memory requires project_id".to_string())
+                })?;
+                self.get_project(project_id)?;
+                if let Some(brand_id) = input.brand_id.as_deref() {
+                    self.get_brand(brand_id)?;
+                }
+            }
+        }
+
+        let now = Utc::now();
+        let memory = MemoryEntry {
+            id: new_id(),
+            scope: scope.as_str().to_string(),
+            brand_id: input.brand_id,
+            project_id: input.project_id,
+            content: input.content.trim().to_string(),
+            source: input.source.trim().to_string(),
+            source_entity_type: String::new(),
+            source_entity_id: String::new(),
+            confidence: 0.0,
+            status: MemoryStatus::Proposed.as_str().to_string(),
+            created_at: now,
+            updated_at: now,
+        };
+        self.connection.execute(
+            "INSERT INTO memory_entries (
+                id, scope, brand_id, project_id, content, source, source_entity_type,
+                source_entity_id, confidence, status, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            params![
+                memory.id,
+                memory.scope,
+                memory.brand_id,
+                memory.project_id,
+                memory.content,
+                memory.source,
+                memory.source_entity_type,
+                memory.source_entity_id,
+                memory.confidence,
+                memory.status,
+                memory.created_at.to_rfc3339(),
+                memory.updated_at.to_rfc3339()
+            ],
+        )?;
+        Ok(memory)
+    }
+
     pub fn list_storyboards(&self, project_id: &str) -> JoiResult<Vec<Storyboard>> {
         let mut statement = self.connection.prepare(
             "SELECT id, project_id, title, duration_seconds, created_at, updated_at
@@ -658,14 +734,31 @@ impl<'a> Repository<'a> {
         Ok(json!(values))
     }
 
-    pub fn list_memory_entries_for_project(&self, project_id: &str) -> JoiResult<Vec<MemoryEntry>> {
+    pub fn list_memory_entries(
+        &self,
+        scope: &str,
+        brand_id: Option<&str>,
+        project_id: Option<&str>,
+    ) -> JoiResult<Vec<MemoryEntry>> {
+        let scope = MemoryScope::try_from(scope)?;
         let mut statement = self.connection.prepare(
             "SELECT id, scope, brand_id, project_id, content, source, source_entity_type,
                     source_entity_id, confidence, status, created_at, updated_at
-             FROM memory_entries WHERE project_id = ?1 ORDER BY created_at ASC",
+             FROM memory_entries
+             WHERE scope = ?1
+               AND (?2 IS NULL OR brand_id = ?2)
+               AND (?3 IS NULL OR project_id = ?3)
+             ORDER BY created_at ASC, id ASC",
         )?;
-        let rows = statement.query_map(params![project_id], map_memory_entry)?;
+        let rows = statement.query_map(
+            params![scope.as_str(), brand_id, project_id],
+            map_memory_entry,
+        )?;
         collect_rows(rows)
+    }
+
+    pub fn list_memory_entries_for_project(&self, project_id: &str) -> JoiResult<Vec<MemoryEntry>> {
+        self.list_memory_entries(MemoryScope::Project.as_str(), None, Some(project_id))
     }
 }
 
