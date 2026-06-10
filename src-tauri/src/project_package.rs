@@ -4,7 +4,7 @@ use rusqlite::Connection;
 use serde_json::json;
 
 use crate::assets::safe_join_asset_path;
-use crate::error::JoiResult;
+use crate::error::{JoiError, JoiResult};
 use crate::repositories::Repository;
 use crate::snapshots::ProjectSnapshotService;
 
@@ -40,6 +40,12 @@ impl<'a> ProjectPackageService<'a> {
         let assets_folder = format!("{slug}-assets");
         let project_json_path = input.export_dir.join(format!("{slug}.joi-project.json"));
         let assets_dir = input.export_dir.join(&assets_folder);
+        if project_json_path.exists() {
+            return Err(JoiError::Package(format!(
+                "project package already exists: {}",
+                project_json_path.display()
+            )));
+        }
 
         std::fs::create_dir_all(&input.export_dir)?;
         std::fs::create_dir_all(&assets_dir)?;
@@ -97,15 +103,22 @@ fn copy_managed_project_assets(
     for asset in repo.list_assets(project_id)? {
         let source = safe_join_asset_path(asset_root, &asset.relative_path)?;
         if !source.is_file() {
-            continue;
+            return Err(JoiError::FileSystem(format!(
+                "managed export asset is missing or not a file: asset {} at {}",
+                asset.id,
+                source.display()
+            )));
         }
 
         let destination = assets_dir.join(export_asset_file_name(&asset.id, &asset.relative_path));
         if destination.exists() {
-            continue;
+            return Err(JoiError::Package(format!(
+                "export asset already exists: {}",
+                destination.display()
+            )));
         }
 
-        std::fs::copy(source, destination)?;
+        std::fs::copy(&source, &destination)?;
     }
 
     Ok(())
