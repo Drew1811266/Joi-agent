@@ -1,3 +1,5 @@
+pub mod db;
+
 mod commands;
 mod error;
 mod models;
