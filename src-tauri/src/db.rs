@@ -209,11 +209,49 @@ CREATE TABLE IF NOT EXISTS memory_entries (
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 
+CREATE TRIGGER IF NOT EXISTS trg_prompt_packages_shot_belongs_to_project_insert
+BEFORE INSERT ON prompt_packages
+FOR EACH ROW
+WHEN EXISTS (SELECT 1 FROM shots WHERE shots.id = NEW.shot_id)
+  AND EXISTS (SELECT 1 FROM projects WHERE projects.id = NEW.project_id)
+  AND NOT EXISTS (
+    SELECT 1
+    FROM shots
+    JOIN storyboards ON storyboards.id = shots.storyboard_id
+    WHERE shots.id = NEW.shot_id
+      AND storyboards.project_id = NEW.project_id
+  )
+BEGIN
+  SELECT RAISE(ABORT, 'prompt package shot must belong to project');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_prompt_packages_shot_belongs_to_project_update
+BEFORE UPDATE OF project_id, shot_id ON prompt_packages
+FOR EACH ROW
+WHEN EXISTS (SELECT 1 FROM shots WHERE shots.id = NEW.shot_id)
+  AND EXISTS (SELECT 1 FROM projects WHERE projects.id = NEW.project_id)
+  AND NOT EXISTS (
+    SELECT 1
+    FROM shots
+    JOIN storyboards ON storyboards.id = shots.storyboard_id
+    WHERE shots.id = NEW.shot_id
+      AND storyboards.project_id = NEW.project_id
+  )
+BEGIN
+  SELECT RAISE(ABORT, 'prompt package shot must belong to project');
+END;
+
 CREATE INDEX IF NOT EXISTS idx_projects_brand_id ON projects(brand_id);
 CREATE INDEX IF NOT EXISTS idx_assets_project_id ON assets(project_id);
+CREATE INDEX IF NOT EXISTS idx_research_reports_project_id ON research_reports(project_id);
+CREATE INDEX IF NOT EXISTS idx_product_understandings_project_id ON product_understandings(project_id);
+CREATE INDEX IF NOT EXISTS idx_creative_directions_project_id ON creative_directions(project_id);
 CREATE INDEX IF NOT EXISTS idx_storyboards_project_id ON storyboards(project_id);
 CREATE INDEX IF NOT EXISTS idx_shots_storyboard_id ON shots(storyboard_id);
 CREATE INDEX IF NOT EXISTS idx_prompt_packages_project_id ON prompt_packages(project_id);
+CREATE INDEX IF NOT EXISTS idx_prompt_packages_shot_id ON prompt_packages(shot_id);
 CREATE INDEX IF NOT EXISTS idx_project_versions_project_id ON project_versions(project_id);
 CREATE INDEX IF NOT EXISTS idx_memory_entries_scope ON memory_entries(scope);
+CREATE INDEX IF NOT EXISTS idx_memory_entries_brand_id ON memory_entries(brand_id);
+CREATE INDEX IF NOT EXISTS idx_memory_entries_project_id ON memory_entries(project_id);
 "#;
