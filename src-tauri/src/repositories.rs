@@ -595,6 +595,11 @@ impl<'a> Repository<'a> {
                 }
             }
             MemoryScope::Brand => {
+                if input.project_id.is_some() {
+                    return Err(JoiError::Validation(
+                        "brand memory must not include project_id".to_string(),
+                    ));
+                }
                 let brand_id = input.brand_id.as_deref().ok_or_else(|| {
                     JoiError::Validation("brand memory requires brand_id".to_string())
                 })?;
@@ -604,9 +609,13 @@ impl<'a> Repository<'a> {
                 let project_id = input.project_id.as_deref().ok_or_else(|| {
                     JoiError::Validation("project memory requires project_id".to_string())
                 })?;
-                self.get_project(project_id)?;
+                let project = self.get_project(project_id)?;
                 if let Some(brand_id) = input.brand_id.as_deref() {
-                    self.get_brand(brand_id)?;
+                    if brand_id != project.brand_id {
+                        return Err(JoiError::Validation(
+                            "project memory brand_id must match project brand".to_string(),
+                        ));
+                    }
                 }
             }
         }

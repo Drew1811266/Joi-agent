@@ -72,6 +72,42 @@ fn rejects_brand_memory_without_brand_id() {
 }
 
 #[test]
+fn rejects_brand_memory_with_project_id() {
+    let app = TestApp::new();
+    let db = open_repo(&app);
+    let repo = Repository::new(db.connection());
+    let brand = repo
+        .create_brand(BrandCreate {
+            name: "Joi Brand".into(),
+            description: String::new(),
+        })
+        .expect("brand");
+    let project = repo
+        .create_project(ProjectCreate {
+            brand_id: brand.id.clone(),
+            title: "Campaign".into(),
+            advertising_goal: String::new(),
+            duration_seconds: 15,
+        })
+        .expect("project");
+
+    let error = repo
+        .create_memory_entry(MemoryEntryCreate {
+            scope: "brand".into(),
+            brand_id: Some(brand.id),
+            project_id: Some(project.id),
+            content: "Use warmer styling".into(),
+            source: "user note".into(),
+        })
+        .expect_err("reject brand memory with project id");
+
+    assert!(
+        matches!(&error, JoiError::Validation(message) if message.contains("brand memory") && message.contains("project_id")),
+        "expected brand project_id validation, got {error:?}"
+    );
+}
+
+#[test]
 fn rejects_project_memory_without_project_id() {
     let app = TestApp::new();
     let db = open_repo(&app);
@@ -90,6 +126,48 @@ fn rejects_project_memory_without_project_id() {
     assert!(
         matches!(&error, JoiError::Validation(message) if message.contains("project_id")),
         "expected project_id validation, got {error:?}"
+    );
+}
+
+#[test]
+fn rejects_project_memory_with_mismatched_brand_id() {
+    let app = TestApp::new();
+    let db = open_repo(&app);
+    let repo = Repository::new(db.connection());
+    let brand_a = repo
+        .create_brand(BrandCreate {
+            name: "Brand A".into(),
+            description: String::new(),
+        })
+        .expect("brand a");
+    let brand_b = repo
+        .create_brand(BrandCreate {
+            name: "Brand B".into(),
+            description: String::new(),
+        })
+        .expect("brand b");
+    let project = repo
+        .create_project(ProjectCreate {
+            brand_id: brand_a.id,
+            title: "Campaign".into(),
+            advertising_goal: String::new(),
+            duration_seconds: 15,
+        })
+        .expect("project");
+
+    let error = repo
+        .create_memory_entry(MemoryEntryCreate {
+            scope: "project".into(),
+            brand_id: Some(brand_b.id),
+            project_id: Some(project.id),
+            content: "Keep model movement minimal".into(),
+            source: "storyboard review".into(),
+        })
+        .expect_err("reject mismatched brand id");
+
+    assert!(
+        matches!(&error, JoiError::Validation(message) if message.contains("brand_id") && message.contains("project")),
+        "expected project brand_id validation, got {error:?}"
     );
 }
 
@@ -195,7 +273,7 @@ fn filters_memory_entries_by_scope_brand_and_project() {
     let project_memory = repo
         .create_memory_entry(MemoryEntryCreate {
             scope: "project".into(),
-            brand_id: None,
+            brand_id: Some(brand_a.id.clone()),
             project_id: Some(project.id.clone()),
             content: "This campaign needs a sharper opening shot".into(),
             source: "project review".into(),
