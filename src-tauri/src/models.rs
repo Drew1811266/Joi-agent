@@ -10,7 +10,7 @@ pub fn new_id() -> String {
 
 macro_rules! string_enum {
     ($name:ident { $($variant:ident => $value:literal),+ $(,)? }) => {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         pub enum $name {
             $($variant),+
         }
@@ -31,6 +31,25 @@ macro_rules! string_enum {
                     $($value => Ok(Self::$variant),)+
                     other => Err(JoiError::Validation(format!("invalid {}: {}", stringify!($name), other))),
                 }
+            }
+        }
+
+        impl Serialize for $name {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: serde::Serializer,
+            {
+                serializer.serialize_str(self.as_str())
+            }
+        }
+
+        impl<'de> Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                let value = String::deserialize(deserializer)?;
+                Self::try_from(value.as_str()).map_err(serde::de::Error::custom)
             }
         }
     };

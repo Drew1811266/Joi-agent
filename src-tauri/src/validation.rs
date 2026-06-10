@@ -76,4 +76,17 @@ mod tests {
         );
         assert!(AssetKind::try_from("unknown").is_err());
     }
+
+    #[test]
+    fn enum_serde_uses_database_strings() {
+        assert_eq!(
+            serde_json::to_string(&AssetKind::ProductImage).unwrap(),
+            "\"product_image\""
+        );
+        assert_eq!(
+            serde_json::from_str::<PromptPlatform>("\"gpt_image_2\"").unwrap(),
+            PromptPlatform::GptImage2
+        );
+        assert!(serde_json::from_str::<AssetKind>("\"unknown\"").is_err());
+    }
 }
