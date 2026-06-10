@@ -69,11 +69,34 @@ impl<'a> ProjectSnapshotService<'a> {
                 "version does not belong to project".to_string(),
             ));
         }
-        let title = version.snapshot_json["project"]["title"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
+        let title = project_title_from_snapshot(&version.snapshot_json)?;
         repo.update_project_title(project_id, &title)?;
         Ok(())
     }
+}
+
+fn project_title_from_snapshot(snapshot: &Value) -> JoiResult<String> {
+    if snapshot.get("format_version").and_then(Value::as_i64) != Some(1) {
+        return Err(JoiError::Validation(
+            "snapshot version malformed: expected format_version 1".to_string(),
+        ));
+    }
+
+    let title = snapshot
+        .get("project")
+        .and_then(|project| project.get("title"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            JoiError::Validation(
+                "snapshot version malformed: project.title must be a string".to_string(),
+            )
+        })?;
+
+    if title.trim().is_empty() {
+        return Err(JoiError::Validation(
+            "snapshot version malformed: project.title must not be empty".to_string(),
+        ));
+    }
+
+    Ok(title.to_string())
 }
