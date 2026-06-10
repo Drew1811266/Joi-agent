@@ -1,4 +1,5 @@
 pub mod db;
+pub mod repositories;
 
 mod commands;
 mod error;
