@@ -4,8 +4,9 @@ use serde_json::json;
 
 use crate::error::{JoiError, JoiResult};
 use crate::models::{
-    new_id, Asset, AssetKind, Brand, CreativeDirection, ProductUnderstanding, Project,
-    PromptModality, PromptPackage, PromptPlatform, ResearchReport, Shot, Storyboard,
+    new_id, Asset, AssetKind, Brand, CreativeDirection, MemoryEntry, ProductUnderstanding, Project,
+    ProjectVersion, PromptModality, PromptPackage, PromptPlatform, ResearchReport, Shot,
+    Storyboard,
 };
 use crate::validation::{validate_non_negative, validate_prompt_modality, validate_required_text};
 
@@ -229,6 +230,77 @@ impl<'a> Repository<'a> {
                 }
                 other => other.into(),
             })
+    }
+
+    pub fn update_project_title(&self, project_id: &str, title: &str) -> JoiResult<Project> {
+        validate_required_text("Project title", title)?;
+        let now = Utc::now();
+        let affected = self.connection.execute(
+            "UPDATE projects SET title = ?1, updated_at = ?2 WHERE id = ?3",
+            params![title.trim(), now.to_rfc3339(), project_id],
+        )?;
+        if affected == 0 {
+            return Err(JoiError::NotFound(format!("project {}", project_id)));
+        }
+        self.get_project(project_id)
+    }
+
+    pub fn create_project_version(&self, version: ProjectVersion) -> JoiResult<ProjectVersion> {
+        self.connection.execute(
+            "INSERT INTO project_versions (
+                id, project_id, version_number, label, change_reason, changed_entities_json,
+                snapshot_json, created_by, is_final_candidate, created_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                version.id,
+                version.project_id,
+                version.version_number,
+                version.label,
+                version.change_reason,
+                version.changed_entities_json.to_string(),
+                version.snapshot_json.to_string(),
+                version.created_by,
+                if version.is_final_candidate { 1 } else { 0 },
+                version.created_at.to_rfc3339()
+            ],
+        )?;
+        Ok(version)
+    }
+
+    pub fn list_project_versions(&self, project_id: &str) -> JoiResult<Vec<ProjectVersion>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, project_id, version_number, label, change_reason, changed_entities_json,
+                    snapshot_json, created_by, is_final_candidate, created_at
+             FROM project_versions WHERE project_id = ?1 ORDER BY version_number ASC",
+        )?;
+        let rows = statement.query_map(params![project_id], map_project_version)?;
+        collect_rows(rows)
+    }
+
+    pub fn get_project_version(&self, version_id: &str) -> JoiResult<ProjectVersion> {
+        self.connection
+            .query_row(
+                "SELECT id, project_id, version_number, label, change_reason, changed_entities_json,
+                        snapshot_json, created_by, is_final_candidate, created_at
+                 FROM project_versions WHERE id = ?1",
+                params![version_id],
+                map_project_version,
+            )
+            .map_err(|err| match err {
+                rusqlite::Error::QueryReturnedNoRows => {
+                    JoiError::NotFound(format!("project version {}", version_id))
+                }
+                other => other.into(),
+            })
+    }
+
+    pub fn next_project_version_number(&self, project_id: &str) -> JoiResult<i64> {
+        let version_number = self.connection.query_row(
+            "SELECT COALESCE(MAX(version_number), 0) + 1 FROM project_versions WHERE project_id = ?1",
+            params![project_id],
+            |row| row.get(0),
+        )?;
+        Ok(version_number)
     }
 
     pub fn create_asset(&self, input: AssetCreate) -> JoiResult<Asset> {
@@ -540,6 +612,61 @@ impl<'a> Repository<'a> {
         let rows = statement.query_map(params![project_id], map_asset)?;
         collect_rows(rows)
     }
+
+    pub fn list_research_reports(&self, project_id: &str) -> JoiResult<Vec<ResearchReport>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, project_id, summary, findings_json, sources_json, created_at, updated_at
+             FROM research_reports WHERE project_id = ?1 ORDER BY created_at ASC",
+        )?;
+        let rows = statement.query_map(params![project_id], map_research_report)?;
+        collect_rows(rows)
+    }
+
+    pub fn list_product_understandings(
+        &self,
+        project_id: &str,
+    ) -> JoiResult<Vec<ProductUnderstanding>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, project_id, product_name, category, audience, selling_points_json,
+                    constraints_json, notes, created_at, updated_at
+             FROM product_understandings WHERE project_id = ?1 ORDER BY created_at ASC",
+        )?;
+        let rows = statement.query_map(params![project_id], map_product_understanding)?;
+        collect_rows(rows)
+    }
+
+    pub fn list_creative_directions(&self, project_id: &str) -> JoiResult<Vec<CreativeDirection>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, project_id, title, concept, tone, visual_style, scene_direction, rationale,
+                    created_at, updated_at
+             FROM creative_directions WHERE project_id = ?1 ORDER BY created_at ASC",
+        )?;
+        let rows = statement.query_map(params![project_id], map_creative_direction)?;
+        collect_rows(rows)
+    }
+
+    pub fn list_storyboards_with_shots(&self, project_id: &str) -> JoiResult<serde_json::Value> {
+        let storyboards = self.list_storyboards(project_id)?;
+        let mut values = Vec::with_capacity(storyboards.len());
+        for storyboard in storyboards {
+            let shots = self.list_shots(&storyboard.id)?;
+            values.push(json!({
+                "storyboard": storyboard,
+                "shots": shots,
+            }));
+        }
+        Ok(json!(values))
+    }
+
+    pub fn list_memory_entries_for_project(&self, project_id: &str) -> JoiResult<Vec<MemoryEntry>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, scope, brand_id, project_id, content, source, source_entity_type,
+                    source_entity_id, confidence, status, created_at, updated_at
+             FROM memory_entries WHERE project_id = ?1 ORDER BY created_at ASC",
+        )?;
+        let rows = statement.query_map(params![project_id], map_memory_entry)?;
+        collect_rows(rows)
+    }
 }
 
 fn collect_rows<T>(rows: impl Iterator<Item = rusqlite::Result<T>>) -> JoiResult<Vec<T>> {
@@ -680,5 +807,79 @@ fn map_prompt_package(row: &rusqlite::Row<'_>) -> rusqlite::Result<PromptPackage
         is_locked: parse_bool(row.get(8)?, 8)?,
         created_at: parse_time(row.get(9)?, 9)?,
         updated_at: parse_time(row.get(10)?, 10)?,
+    })
+}
+
+fn map_research_report(row: &rusqlite::Row<'_>) -> rusqlite::Result<ResearchReport> {
+    Ok(ResearchReport {
+        id: row.get(0)?,
+        project_id: row.get(1)?,
+        summary: row.get(2)?,
+        findings_json: parse_json(row.get(3)?, 3)?,
+        sources_json: parse_json(row.get(4)?, 4)?,
+        created_at: parse_time(row.get(5)?, 5)?,
+        updated_at: parse_time(row.get(6)?, 6)?,
+    })
+}
+
+fn map_product_understanding(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProductUnderstanding> {
+    Ok(ProductUnderstanding {
+        id: row.get(0)?,
+        project_id: row.get(1)?,
+        product_name: row.get(2)?,
+        category: row.get(3)?,
+        audience: row.get(4)?,
+        selling_points_json: parse_json(row.get(5)?, 5)?,
+        constraints_json: parse_json(row.get(6)?, 6)?,
+        notes: row.get(7)?,
+        created_at: parse_time(row.get(8)?, 8)?,
+        updated_at: parse_time(row.get(9)?, 9)?,
+    })
+}
+
+fn map_creative_direction(row: &rusqlite::Row<'_>) -> rusqlite::Result<CreativeDirection> {
+    Ok(CreativeDirection {
+        id: row.get(0)?,
+        project_id: row.get(1)?,
+        title: row.get(2)?,
+        concept: row.get(3)?,
+        tone: row.get(4)?,
+        visual_style: row.get(5)?,
+        scene_direction: row.get(6)?,
+        rationale: row.get(7)?,
+        created_at: parse_time(row.get(8)?, 8)?,
+        updated_at: parse_time(row.get(9)?, 9)?,
+    })
+}
+
+fn map_project_version(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectVersion> {
+    Ok(ProjectVersion {
+        id: row.get(0)?,
+        project_id: row.get(1)?,
+        version_number: row.get(2)?,
+        label: row.get(3)?,
+        change_reason: row.get(4)?,
+        changed_entities_json: parse_json(row.get(5)?, 5)?,
+        snapshot_json: parse_json(row.get(6)?, 6)?,
+        created_by: row.get(7)?,
+        is_final_candidate: parse_bool(row.get(8)?, 8)?,
+        created_at: parse_time(row.get(9)?, 9)?,
+    })
+}
+
+fn map_memory_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<MemoryEntry> {
+    Ok(MemoryEntry {
+        id: row.get(0)?,
+        scope: row.get(1)?,
+        brand_id: row.get(2)?,
+        project_id: row.get(3)?,
+        content: row.get(4)?,
+        source: row.get(5)?,
+        source_entity_type: row.get(6)?,
+        source_entity_id: row.get(7)?,
+        confidence: row.get(8)?,
+        status: row.get(9)?,
+        created_at: parse_time(row.get(10)?, 10)?,
+        updated_at: parse_time(row.get(11)?, 11)?,
     })
 }

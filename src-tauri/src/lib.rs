@@ -2,6 +2,7 @@ pub mod assets;
 pub mod db;
 pub mod error;
 pub mod repositories;
+pub mod snapshots;
 
 mod commands;
 mod models;
