@@ -3,8 +3,11 @@ use rusqlite::{params, Connection};
 use serde_json::json;
 
 use crate::error::{JoiError, JoiResult};
-use crate::models::{new_id, Brand, Project};
-use crate::validation::{validate_non_negative, validate_required_text};
+use crate::models::{
+    new_id, Brand, CreativeDirection, ProductUnderstanding, Project, PromptModality, PromptPackage,
+    PromptPlatform, ResearchReport, Shot, Storyboard,
+};
+use crate::validation::{validate_non_negative, validate_prompt_modality, validate_required_text};
 
 pub struct Repository<'a> {
     connection: &'a Connection,
@@ -22,6 +25,50 @@ pub struct ProjectCreate {
     pub title: String,
     pub advertising_goal: String,
     pub duration_seconds: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResearchReportCreate {
+    pub project_id: String,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProductUnderstandingCreate {
+    pub project_id: String,
+    pub product_name: String,
+    pub category: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreativeDirectionCreate {
+    pub project_id: String,
+    pub title: String,
+    pub concept: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct StoryboardCreate {
+    pub project_id: String,
+    pub title: String,
+    pub duration_seconds: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ShotCreate {
+    pub storyboard_id: String,
+    pub shot_number: i64,
+    pub duration_seconds: i64,
+    pub description: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct PromptPackageCreate {
+    pub project_id: String,
+    pub shot_id: String,
+    pub platform: String,
+    pub modality: String,
+    pub prompt_text: String,
 }
 
 impl<'a> Repository<'a> {
@@ -171,6 +218,260 @@ impl<'a> Repository<'a> {
                 other => other.into(),
             })
     }
+
+    pub fn create_research_report(&self, input: ResearchReportCreate) -> JoiResult<ResearchReport> {
+        self.get_project(&input.project_id)?;
+        let now = Utc::now();
+        let report = ResearchReport {
+            id: new_id(),
+            project_id: input.project_id,
+            summary: input.summary,
+            findings_json: json!([]),
+            sources_json: json!([]),
+            created_at: now,
+            updated_at: now,
+        };
+        self.connection.execute(
+            "INSERT INTO research_reports (
+                id, project_id, summary, findings_json, sources_json, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                report.id,
+                report.project_id,
+                report.summary,
+                report.findings_json.to_string(),
+                report.sources_json.to_string(),
+                report.created_at.to_rfc3339(),
+                report.updated_at.to_rfc3339()
+            ],
+        )?;
+        Ok(report)
+    }
+
+    pub fn create_product_understanding(
+        &self,
+        input: ProductUnderstandingCreate,
+    ) -> JoiResult<ProductUnderstanding> {
+        self.get_project(&input.project_id)?;
+        let now = Utc::now();
+        let understanding = ProductUnderstanding {
+            id: new_id(),
+            project_id: input.project_id,
+            product_name: input.product_name,
+            category: input.category,
+            audience: String::new(),
+            selling_points_json: json!([]),
+            constraints_json: json!([]),
+            notes: String::new(),
+            created_at: now,
+            updated_at: now,
+        };
+        self.connection.execute(
+            "INSERT INTO product_understandings (
+                id, project_id, product_name, category, audience, selling_points_json,
+                constraints_json, notes, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                understanding.id,
+                understanding.project_id,
+                understanding.product_name,
+                understanding.category,
+                understanding.audience,
+                understanding.selling_points_json.to_string(),
+                understanding.constraints_json.to_string(),
+                understanding.notes,
+                understanding.created_at.to_rfc3339(),
+                understanding.updated_at.to_rfc3339()
+            ],
+        )?;
+        Ok(understanding)
+    }
+
+    pub fn create_creative_direction(
+        &self,
+        input: CreativeDirectionCreate,
+    ) -> JoiResult<CreativeDirection> {
+        validate_required_text("Creative direction title", &input.title)?;
+        self.get_project(&input.project_id)?;
+        let now = Utc::now();
+        let direction = CreativeDirection {
+            id: new_id(),
+            project_id: input.project_id,
+            title: input.title.trim().to_string(),
+            concept: input.concept,
+            tone: String::new(),
+            visual_style: String::new(),
+            scene_direction: String::new(),
+            rationale: String::new(),
+            created_at: now,
+            updated_at: now,
+        };
+        self.connection.execute(
+            "INSERT INTO creative_directions (
+                id, project_id, title, concept, tone, visual_style, scene_direction, rationale,
+                created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                direction.id,
+                direction.project_id,
+                direction.title,
+                direction.concept,
+                direction.tone,
+                direction.visual_style,
+                direction.scene_direction,
+                direction.rationale,
+                direction.created_at.to_rfc3339(),
+                direction.updated_at.to_rfc3339()
+            ],
+        )?;
+        Ok(direction)
+    }
+
+    pub fn create_storyboard(&self, input: StoryboardCreate) -> JoiResult<Storyboard> {
+        validate_non_negative("Storyboard duration", input.duration_seconds)?;
+        self.get_project(&input.project_id)?;
+        let now = Utc::now();
+        let storyboard = Storyboard {
+            id: new_id(),
+            project_id: input.project_id,
+            title: input.title,
+            duration_seconds: input.duration_seconds,
+            created_at: now,
+            updated_at: now,
+        };
+        self.connection.execute(
+            "INSERT INTO storyboards (
+                id, project_id, title, duration_seconds, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                storyboard.id,
+                storyboard.project_id,
+                storyboard.title,
+                storyboard.duration_seconds,
+                storyboard.created_at.to_rfc3339(),
+                storyboard.updated_at.to_rfc3339()
+            ],
+        )?;
+        Ok(storyboard)
+    }
+
+    pub fn create_shot(&self, input: ShotCreate) -> JoiResult<Shot> {
+        validate_non_negative("Shot duration", input.duration_seconds)?;
+        let now = Utc::now();
+        let shot = Shot {
+            id: new_id(),
+            storyboard_id: input.storyboard_id,
+            shot_number: input.shot_number,
+            duration_seconds: input.duration_seconds,
+            description: input.description,
+            model_action: String::new(),
+            camera_movement: String::new(),
+            scene: String::new(),
+            lighting: String::new(),
+            subtitle_or_voiceover: String::new(),
+            rationale: String::new(),
+            is_locked: false,
+            metadata_json: json!({}),
+            created_at: now,
+            updated_at: now,
+        };
+        self.connection.execute(
+            "INSERT INTO shots (
+                id, storyboard_id, shot_number, duration_seconds, description, model_action,
+                camera_movement, scene, lighting, subtitle_or_voiceover, rationale, is_locked,
+                metadata_json, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            params![
+                shot.id,
+                shot.storyboard_id,
+                shot.shot_number,
+                shot.duration_seconds,
+                shot.description,
+                shot.model_action,
+                shot.camera_movement,
+                shot.scene,
+                shot.lighting,
+                shot.subtitle_or_voiceover,
+                shot.rationale,
+                0,
+                shot.metadata_json.to_string(),
+                shot.created_at.to_rfc3339(),
+                shot.updated_at.to_rfc3339()
+            ],
+        )?;
+        Ok(shot)
+    }
+
+    pub fn create_prompt_package(&self, input: PromptPackageCreate) -> JoiResult<PromptPackage> {
+        let platform = PromptPlatform::try_from(input.platform.as_str())?;
+        let modality = PromptModality::try_from(input.modality.as_str())?;
+        validate_prompt_modality(platform, modality)?;
+        self.get_project(&input.project_id)?;
+        let now = Utc::now();
+        let prompt = PromptPackage {
+            id: new_id(),
+            project_id: input.project_id,
+            shot_id: input.shot_id,
+            platform: platform.as_str().to_string(),
+            modality: modality.as_str().to_string(),
+            prompt_text: input.prompt_text,
+            negative_prompt: String::new(),
+            parameters_json: json!({}),
+            is_locked: false,
+            created_at: now,
+            updated_at: now,
+        };
+        self.connection.execute(
+            "INSERT INTO prompt_packages (
+                id, project_id, shot_id, platform, modality, prompt_text, negative_prompt,
+                parameters_json, is_locked, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![
+                prompt.id,
+                prompt.project_id,
+                prompt.shot_id,
+                prompt.platform,
+                prompt.modality,
+                prompt.prompt_text,
+                prompt.negative_prompt,
+                prompt.parameters_json.to_string(),
+                0,
+                prompt.created_at.to_rfc3339(),
+                prompt.updated_at.to_rfc3339()
+            ],
+        )?;
+        Ok(prompt)
+    }
+
+    pub fn list_storyboards(&self, project_id: &str) -> JoiResult<Vec<Storyboard>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, project_id, title, duration_seconds, created_at, updated_at
+             FROM storyboards WHERE project_id = ?1 ORDER BY created_at ASC",
+        )?;
+        let rows = statement.query_map(params![project_id], map_storyboard)?;
+        collect_rows(rows)
+    }
+
+    pub fn list_shots(&self, storyboard_id: &str) -> JoiResult<Vec<Shot>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, storyboard_id, shot_number, duration_seconds, description, model_action,
+                    camera_movement, scene, lighting, subtitle_or_voiceover, rationale, is_locked,
+                    metadata_json, created_at, updated_at
+             FROM shots WHERE storyboard_id = ?1 ORDER BY shot_number ASC",
+        )?;
+        let rows = statement.query_map(params![storyboard_id], map_shot)?;
+        collect_rows(rows)
+    }
+
+    pub fn list_prompt_packages(&self, project_id: &str) -> JoiResult<Vec<PromptPackage>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, project_id, shot_id, platform, modality, prompt_text, negative_prompt,
+                    parameters_json, is_locked, created_at, updated_at
+             FROM prompt_packages WHERE project_id = ?1 ORDER BY created_at ASC",
+        )?;
+        let rows = statement.query_map(params![project_id], map_prompt_package)?;
+        collect_rows(rows)
+    }
 }
 
 fn collect_rows<T>(rows: impl Iterator<Item = rusqlite::Result<T>>) -> JoiResult<Vec<T>> {
@@ -230,6 +531,53 @@ fn map_project(row: &rusqlite::Row<'_>) -> rusqlite::Result<Project> {
         workflow_stage: row.get(6)?,
         current_version_id: row.get(7)?,
         final_version_id: row.get(8)?,
+        created_at: parse_time(row.get(9)?, 9)?,
+        updated_at: parse_time(row.get(10)?, 10)?,
+    })
+}
+
+fn map_storyboard(row: &rusqlite::Row<'_>) -> rusqlite::Result<Storyboard> {
+    Ok(Storyboard {
+        id: row.get(0)?,
+        project_id: row.get(1)?,
+        title: row.get(2)?,
+        duration_seconds: row.get(3)?,
+        created_at: parse_time(row.get(4)?, 4)?,
+        updated_at: parse_time(row.get(5)?, 5)?,
+    })
+}
+
+fn map_shot(row: &rusqlite::Row<'_>) -> rusqlite::Result<Shot> {
+    Ok(Shot {
+        id: row.get(0)?,
+        storyboard_id: row.get(1)?,
+        shot_number: row.get(2)?,
+        duration_seconds: row.get(3)?,
+        description: row.get(4)?,
+        model_action: row.get(5)?,
+        camera_movement: row.get(6)?,
+        scene: row.get(7)?,
+        lighting: row.get(8)?,
+        subtitle_or_voiceover: row.get(9)?,
+        rationale: row.get(10)?,
+        is_locked: row.get::<_, i64>(11)? == 1,
+        metadata_json: parse_json(row.get(12)?, 12)?,
+        created_at: parse_time(row.get(13)?, 13)?,
+        updated_at: parse_time(row.get(14)?, 14)?,
+    })
+}
+
+fn map_prompt_package(row: &rusqlite::Row<'_>) -> rusqlite::Result<PromptPackage> {
+    Ok(PromptPackage {
+        id: row.get(0)?,
+        project_id: row.get(1)?,
+        shot_id: row.get(2)?,
+        platform: row.get(3)?,
+        modality: row.get(4)?,
+        prompt_text: row.get(5)?,
+        negative_prompt: row.get(6)?,
+        parameters_json: parse_json(row.get(7)?, 7)?,
+        is_locked: row.get::<_, i64>(8)? == 1,
         created_at: parse_time(row.get(9)?, 9)?,
         updated_at: parse_time(row.get(10)?, 10)?,
     })
