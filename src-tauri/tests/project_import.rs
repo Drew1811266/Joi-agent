@@ -136,10 +136,157 @@ fn rejects_malformed_project_package_json() {
     assert_package_error(error, "malformed");
 }
 
+#[test]
+fn rejects_non_object_snapshot() {
+    let app = TestApp::new();
+    let db = migrated_database(&app);
+
+    let error = import_package(
+        &app,
+        &db,
+        json!({
+            "format_version": 1,
+            "snapshot": []
+        }),
+    )
+    .expect_err("reject non-object snapshot");
+
+    assert_package_error(error, "snapshot");
+}
+
+#[test]
+fn rejects_snapshot_without_format_version_or_wrong_snapshot_format_version() {
+    for snapshot in [
+        json!({
+            "brand": { "name": "Brand" },
+            "project": { "title": "Project" }
+        }),
+        json!({
+            "format_version": 2,
+            "brand": { "name": "Brand" },
+            "project": { "title": "Project" }
+        }),
+    ] {
+        let app = TestApp::new();
+        let db = migrated_database(&app);
+
+        let error = import_package(
+            &app,
+            &db,
+            json!({
+                "format_version": 1,
+                "snapshot": snapshot
+            }),
+        )
+        .expect_err("reject wrong snapshot format");
+
+        assert_package_error(error, "snapshot.format_version");
+    }
+}
+
+#[test]
+fn rejects_missing_or_blank_brand_name() {
+    for brand in [json!({}), json!({ "name": "" }), json!({ "name": "   " })] {
+        let app = TestApp::new();
+        let db = migrated_database(&app);
+
+        let error = import_package(
+            &app,
+            &db,
+            json!({
+                "format_version": 1,
+                "snapshot": {
+                    "format_version": 1,
+                    "brand": brand,
+                    "project": { "title": "Project" }
+                }
+            }),
+        )
+        .expect_err("reject missing or blank brand name");
+
+        assert_package_error(error, "brand.name");
+    }
+}
+
+#[test]
+fn rejects_missing_or_blank_project_title() {
+    for project in [json!({}), json!({ "title": "" }), json!({ "title": "   " })] {
+        let app = TestApp::new();
+        let db = migrated_database(&app);
+
+        let error = import_package(
+            &app,
+            &db,
+            json!({
+                "format_version": 1,
+                "snapshot": {
+                    "format_version": 1,
+                    "brand": { "name": "Brand" },
+                    "project": project
+                }
+            }),
+        )
+        .expect_err("reject missing or blank project title");
+
+        assert_package_error(error, "project.title");
+    }
+}
+
+#[test]
+fn rejects_invalid_duration_seconds_without_leaving_brand_residue() {
+    let app = TestApp::new();
+    let db = migrated_database(&app);
+
+    let error = import_package(
+        &app,
+        &db,
+        json!({
+            "format_version": 1,
+            "snapshot": {
+                "format_version": 1,
+                "brand": { "name": "Brand" },
+                "project": {
+                    "title": "Project",
+                    "duration_seconds": 0
+                }
+            }
+        }),
+    )
+    .expect_err("reject invalid duration");
+
+    assert_package_error(error, "project.duration_seconds");
+    assert!(
+        Repository::new(db.connection())
+            .list_brands()
+            .expect("list brands")
+            .is_empty(),
+        "invalid project package must not create a brand"
+    );
+}
+
 fn migrated_database(app: &TestApp) -> Database {
     let db = Database::open(&app.db_path).expect("open database");
     db.migrate().expect("migrate");
     db
+}
+
+fn import_package(
+    app: &TestApp,
+    db: &Database,
+    package: serde_json::Value,
+) -> Result<(), JoiError> {
+    let package_path = app.temp_dir.path().join("import.joi-project.json");
+    std::fs::write(
+        &package_path,
+        serde_json::to_vec_pretty(&package).expect("serialize package"),
+    )
+    .expect("write package");
+
+    ProjectPackageService::new(db.connection(), app.temp_dir.path().join("assets"))
+        .import_project(ProjectImportInput {
+            project_json_path: package_path,
+        })
+        .map(|_| ())
 }
 
 fn assert_package_error(error: JoiError, expected_message: &str) {

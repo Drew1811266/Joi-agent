@@ -30,6 +30,14 @@ pub struct ProjectImportResult {
     pub project_id: String,
 }
 
+struct ProjectImportFields {
+    brand_name: String,
+    brand_description: String,
+    project_title: String,
+    advertising_goal: String,
+    duration_seconds: i64,
+}
+
 pub struct ProjectPackageService<'a> {
     connection: &'a Connection,
     asset_root: PathBuf,
@@ -80,23 +88,17 @@ impl<'a> ProjectPackageService<'a> {
 
     pub fn import_project(&self, input: ProjectImportInput) -> JoiResult<ProjectImportResult> {
         let package = read_project_package(&input.project_json_path)?;
-        validate_package_format(&package)?;
-        let snapshot = package
-            .get("snapshot")
-            .ok_or_else(|| JoiError::Package("project package missing snapshot".to_string()))?;
-
-        let brand_snapshot = snapshot.get("brand").unwrap_or(&Value::Null);
-        let project_snapshot = snapshot.get("project").unwrap_or(&Value::Null);
+        let fields = parse_project_import_fields(&package)?;
         let repo = Repository::new(self.connection);
         let brand = repo.create_brand(BrandCreate {
-            name: string_or_default(brand_snapshot, "name", "Imported Brand"),
-            description: string_or_default(brand_snapshot, "description", ""),
+            name: fields.brand_name,
+            description: fields.brand_description,
         })?;
         let project = repo.create_project(ProjectCreate {
             brand_id: brand.id,
-            title: string_or_default(project_snapshot, "title", "Imported Project"),
-            advertising_goal: string_or_default(project_snapshot, "advertising_goal", ""),
-            duration_seconds: integer_or_default(project_snapshot, "duration_seconds", 15),
+            title: fields.project_title,
+            advertising_goal: fields.advertising_goal,
+            duration_seconds: fields.duration_seconds,
         })?;
 
         Ok(ProjectImportResult {
@@ -109,6 +111,32 @@ fn read_project_package(path: &Path) -> JoiResult<Value> {
     let bytes = std::fs::read(path)?;
     serde_json::from_slice(&bytes)
         .map_err(|err| JoiError::Package(format!("malformed project package JSON: {err}")))
+}
+
+fn parse_project_import_fields(package: &Value) -> JoiResult<ProjectImportFields> {
+    validate_package_format(package)?;
+    let snapshot = required_object(package, "snapshot")?;
+    validate_format_version(snapshot, "snapshot.format_version")?;
+    let brand = required_object(snapshot, "brand")?;
+    let project = required_object(snapshot, "project")?;
+
+    Ok(ProjectImportFields {
+        brand_name: required_non_blank_string(brand, "name", "brand.name")?,
+        brand_description: optional_string(brand, "description", "brand.description", "")?,
+        project_title: required_non_blank_string(project, "title", "project.title")?,
+        advertising_goal: optional_string(
+            project,
+            "advertising_goal",
+            "project.advertising_goal",
+            "",
+        )?,
+        duration_seconds: optional_positive_integer(
+            project,
+            "duration_seconds",
+            "project.duration_seconds",
+            15,
+        )?,
+    })
 }
 
 fn validate_package_format(package: &Value) -> JoiResult<()> {
@@ -124,16 +152,74 @@ fn validate_package_format(package: &Value) -> JoiResult<()> {
     Ok(())
 }
 
-fn string_or_default(parent: &Value, key: &str, default: &str) -> String {
-    parent
-        .get(key)
-        .and_then(Value::as_str)
-        .unwrap_or(default)
-        .to_string()
+fn validate_format_version(parent: &Value, field: &str) -> JoiResult<()> {
+    let format_version = parent
+        .get("format_version")
+        .and_then(Value::as_i64)
+        .ok_or_else(|| JoiError::Package(format!("{field} must be 1")))?;
+    if format_version != 1 {
+        return Err(JoiError::Package(format!(
+            "unsupported {field}: {format_version}"
+        )));
+    }
+    Ok(())
 }
 
-fn integer_or_default(parent: &Value, key: &str, default: i64) -> i64 {
-    parent.get(key).and_then(Value::as_i64).unwrap_or(default)
+fn required_object<'a>(parent: &'a Value, key: &str) -> JoiResult<&'a Value> {
+    let value = parent
+        .get(key)
+        .ok_or_else(|| JoiError::Package(format!("{key} must be an object")))?;
+    if !value.is_object() {
+        return Err(JoiError::Package(format!("{key} must be an object")));
+    }
+    Ok(value)
+}
+
+fn required_non_blank_string(parent: &Value, key: &str, field: &str) -> JoiResult<String> {
+    let value = parent
+        .get(key)
+        .ok_or_else(|| JoiError::Package(format!("{field} must be a non-empty string")))?;
+    let text = value
+        .as_str()
+        .ok_or_else(|| JoiError::Package(format!("{field} must be a non-empty string")))?;
+    if text.trim().is_empty() {
+        return Err(JoiError::Package(format!(
+            "{field} must be a non-empty string"
+        )));
+    }
+    Ok(text.trim().to_string())
+}
+
+fn optional_string(parent: &Value, key: &str, field: &str, default: &str) -> JoiResult<String> {
+    match parent.get(key) {
+        Some(value) => value
+            .as_str()
+            .map(ToString::to_string)
+            .ok_or_else(|| JoiError::Package(format!("{field} must be a string"))),
+        None => Ok(default.to_string()),
+    }
+}
+
+fn optional_positive_integer(
+    parent: &Value,
+    key: &str,
+    field: &str,
+    default: i64,
+) -> JoiResult<i64> {
+    match parent.get(key) {
+        Some(value) => {
+            let number = value
+                .as_i64()
+                .ok_or_else(|| JoiError::Package(format!("{field} must be a positive integer")))?;
+            if number <= 0 {
+                return Err(JoiError::Package(format!(
+                    "{field} must be a positive integer"
+                )));
+            }
+            Ok(number)
+        }
+        None => Ok(default),
+    }
 }
 
 pub fn slugify_project_title(title: &str) -> String {
