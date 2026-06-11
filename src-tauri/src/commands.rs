@@ -9,7 +9,9 @@ use crate::db::Database;
 use crate::error::{JoiError, JoiResult};
 use crate::models::{Asset, Brand, MemoryEntry, Project, ProjectVersion};
 use crate::project_package::{ProjectExportInput, ProjectImportInput, ProjectPackageService};
-use crate::repositories::{BrandCreate, MemoryEntryCreate, ProjectCreate, Repository};
+use crate::repositories::{
+    BrandCreate, BrandUpdate, MemoryEntryCreate, ProjectCreate, ProjectUpdate, Repository,
+};
 use crate::snapshots::{ProjectSnapshotService, SaveSnapshotInput};
 
 pub struct AppState {
@@ -19,8 +21,8 @@ pub struct AppState {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HealthResponse {
-    pub ready: bool,
-    pub app: String,
+    pub status: String,
+    pub app_name: String,
     pub phase: String,
 }
 
@@ -31,8 +33,23 @@ pub struct BrandInput {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BrandUpdateInput {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ProjectInput {
     pub brand_id: String,
+    pub title: String,
+    pub advertising_goal: String,
+    pub duration_seconds: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProjectUpdateInput {
+    pub id: String,
     pub title: String,
     pub advertising_goal: String,
     pub duration_seconds: i64,
@@ -97,36 +114,41 @@ pub struct MemoryListInput {
     pub project_id: Option<String>,
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn joi_health_check() -> HealthResponse {
     HealthResponse {
-        ready: true,
-        app: "Joi Agent".to_string(),
+        status: "ready".to_string(),
+        app_name: "Joi Agent".to_string(),
         phase: "Phase 1 local data store".to_string(),
     }
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn joi_create_brand(state: State<'_, AppState>, input: BrandInput) -> JoiResult<Brand> {
     create_brand(state.inner(), input)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn joi_list_brands(state: State<'_, AppState>) -> JoiResult<Vec<Brand>> {
     list_brands(state.inner())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn joi_get_brand(state: State<'_, AppState>, id: String) -> JoiResult<Brand> {
     get_brand(state.inner(), id)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
+pub fn joi_update_brand(state: State<'_, AppState>, input: BrandUpdateInput) -> JoiResult<Brand> {
+    update_brand(state.inner(), input)
+}
+
+#[tauri::command(rename_all = "snake_case")]
 pub fn joi_create_project(state: State<'_, AppState>, input: ProjectInput) -> JoiResult<Project> {
     create_project(state.inner(), input)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn joi_list_projects(
     state: State<'_, AppState>,
     brand_id: Option<String>,
@@ -134,12 +156,20 @@ pub fn joi_list_projects(
     list_projects(state.inner(), brand_id)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn joi_get_project(state: State<'_, AppState>, id: String) -> JoiResult<Project> {
     get_project(state.inner(), id)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
+pub fn joi_update_project(
+    state: State<'_, AppState>,
+    input: ProjectUpdateInput,
+) -> JoiResult<Project> {
+    update_project(state.inner(), input)
+}
+
+#[tauri::command(rename_all = "snake_case")]
 pub fn joi_import_asset(
     state: State<'_, AppState>,
     input: AssetImportCommandInput,
@@ -147,12 +177,12 @@ pub fn joi_import_asset(
     import_asset(state.inner(), input)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn joi_list_assets(state: State<'_, AppState>, project_id: String) -> JoiResult<Vec<Asset>> {
     list_assets(state.inner(), project_id)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn joi_save_project_snapshot(
     state: State<'_, AppState>,
     input: SnapshotInput,
@@ -160,7 +190,7 @@ pub fn joi_save_project_snapshot(
     save_project_snapshot(state.inner(), input)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn joi_list_project_versions(
     state: State<'_, AppState>,
     project_id: String,
@@ -168,7 +198,7 @@ pub fn joi_list_project_versions(
     list_project_versions(state.inner(), project_id)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn joi_restore_project_version(
     state: State<'_, AppState>,
     input: RestoreVersionInput,
@@ -176,7 +206,7 @@ pub fn joi_restore_project_version(
     restore_project_version(state.inner(), input)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn joi_export_project(
     state: State<'_, AppState>,
     input: ProjectExportCommandInput,
@@ -184,7 +214,7 @@ pub fn joi_export_project(
     export_project(state.inner(), input)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn joi_import_project(
     state: State<'_, AppState>,
     input: ProjectImportCommandInput,
@@ -192,7 +222,7 @@ pub fn joi_import_project(
     import_project(state.inner(), input)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn joi_create_memory_entry(
     state: State<'_, AppState>,
     input: MemoryEntryInput,
@@ -200,7 +230,7 @@ pub fn joi_create_memory_entry(
     create_memory_entry(state.inner(), input)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn joi_list_memory_entries(
     state: State<'_, AppState>,
     input: MemoryListInput,
@@ -226,6 +256,15 @@ pub fn get_brand(state: &AppState, id: String) -> JoiResult<Brand> {
     Repository::new(db.connection()).get_brand(&id)
 }
 
+pub fn update_brand(state: &AppState, input: BrandUpdateInput) -> JoiResult<Brand> {
+    let db = lock_db(state)?;
+    Repository::new(db.connection()).update_brand(BrandUpdate {
+        id: input.id,
+        name: input.name,
+        description: input.description,
+    })
+}
+
 pub fn create_project(state: &AppState, input: ProjectInput) -> JoiResult<Project> {
     let db = lock_db(state)?;
     Repository::new(db.connection()).create_project(ProjectCreate {
@@ -244,6 +283,16 @@ pub fn list_projects(state: &AppState, brand_id: Option<String>) -> JoiResult<Ve
 pub fn get_project(state: &AppState, id: String) -> JoiResult<Project> {
     let db = lock_db(state)?;
     Repository::new(db.connection()).get_project(&id)
+}
+
+pub fn update_project(state: &AppState, input: ProjectUpdateInput) -> JoiResult<Project> {
+    let db = lock_db(state)?;
+    Repository::new(db.connection()).update_project(ProjectUpdate {
+        id: input.id,
+        title: input.title,
+        advertising_goal: input.advertising_goal,
+        duration_seconds: input.duration_seconds,
+    })
 }
 
 pub fn import_asset(state: &AppState, input: AssetImportCommandInput) -> JoiResult<Asset> {

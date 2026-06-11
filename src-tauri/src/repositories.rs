@@ -21,8 +21,23 @@ pub struct BrandCreate {
 }
 
 #[derive(Debug, Clone)]
+pub struct BrandUpdate {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct ProjectCreate {
     pub brand_id: String,
+    pub title: String,
+    pub advertising_goal: String,
+    pub duration_seconds: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProjectUpdate {
+    pub id: String,
     pub title: String,
     pub advertising_goal: String,
     pub duration_seconds: i64,
@@ -164,6 +179,24 @@ impl<'a> Repository<'a> {
             })
     }
 
+    pub fn update_brand(&self, input: BrandUpdate) -> JoiResult<Brand> {
+        validate_required_text("Brand name", &input.name)?;
+        let now = Utc::now();
+        let affected = self.connection.execute(
+            "UPDATE brands SET name = ?1, description = ?2, updated_at = ?3 WHERE id = ?4",
+            params![
+                input.name.trim(),
+                input.description,
+                now.to_rfc3339(),
+                input.id
+            ],
+        )?;
+        if affected == 0 {
+            return Err(JoiError::NotFound(format!("brand {}", input.id)));
+        }
+        self.get_brand(&input.id)
+    }
+
     pub fn create_project(&self, input: ProjectCreate) -> JoiResult<Project> {
         validate_required_text("Project title", &input.title)?;
         validate_non_negative("Project duration", input.duration_seconds)?;
@@ -239,6 +272,28 @@ impl<'a> Repository<'a> {
                 }
                 other => other.into(),
             })
+    }
+
+    pub fn update_project(&self, input: ProjectUpdate) -> JoiResult<Project> {
+        validate_required_text("Project title", &input.title)?;
+        validate_non_negative("Project duration", input.duration_seconds)?;
+        let now = Utc::now();
+        let affected = self.connection.execute(
+            "UPDATE projects
+             SET title = ?1, advertising_goal = ?2, duration_seconds = ?3, updated_at = ?4
+             WHERE id = ?5",
+            params![
+                input.title.trim(),
+                input.advertising_goal,
+                input.duration_seconds,
+                now.to_rfc3339(),
+                input.id
+            ],
+        )?;
+        if affected == 0 {
+            return Err(JoiError::NotFound(format!("project {}", input.id)));
+        }
+        self.get_project(&input.id)
     }
 
     pub fn update_project_title(&self, project_id: &str, title: &str) -> JoiResult<Project> {

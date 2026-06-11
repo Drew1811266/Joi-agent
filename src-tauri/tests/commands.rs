@@ -7,11 +7,12 @@ use common::TestApp;
 use joi_agent_lib::commands::{
     create_brand, create_memory_entry, create_project, get_brand, get_project, joi_health_check,
     list_brands, list_memory_entries, list_project_versions, list_projects, save_project_snapshot,
-    AppState, AssetImportCommandInput, BrandInput, MemoryEntryInput, MemoryListInput,
-    ProjectExportCommandInput, ProjectImportCommandInput, ProjectInput, RestoreVersionInput,
-    SnapshotInput,
+    update_brand, update_project, AppState, AssetImportCommandInput, BrandInput, BrandUpdateInput,
+    MemoryEntryInput, MemoryListInput, ProjectExportCommandInput, ProjectImportCommandInput,
+    ProjectInput, ProjectUpdateInput, RestoreVersionInput, SnapshotInput,
 };
 use joi_agent_lib::db::Database;
+use joi_agent_lib::error::JoiError;
 use serde_json::json;
 
 fn test_state() -> (TestApp, AppState) {
@@ -33,8 +34,8 @@ fn health_response_reports_ready_app_and_phase() {
     let health = joi_health_check();
     let value = serde_json::to_value(&health).expect("serialize health");
 
-    assert_eq!(value["ready"], true);
-    assert_eq!(value["app"], "Joi Agent");
+    assert_eq!(value["status"], "ready");
+    assert_eq!(value["app_name"], "Joi Agent");
     assert_eq!(value["phase"], "Phase 1 local data store");
 }
 
@@ -50,6 +51,13 @@ fn command_inputs_round_trip_through_json() {
         serde_json::to_value(&brand).expect("serialize brand")["description"],
         "Premium womenswear"
     );
+    let brand_update: BrandUpdateInput = serde_json::from_value(json!({
+        "id": "brand-1",
+        "name": "Atelier Joi Studio",
+        "description": "Campaign unit"
+    }))
+    .expect("brand update input");
+    assert_eq!(brand_update.id, "brand-1");
 
     let project: ProjectInput = serde_json::from_value(json!({
         "brand_id": "brand-1",
@@ -59,6 +67,14 @@ fn command_inputs_round_trip_through_json() {
     }))
     .expect("project input");
     assert_eq!(project.duration_seconds, 15);
+    let project_update: ProjectUpdateInput = serde_json::from_value(json!({
+        "id": "project-1",
+        "title": "30s launch film",
+        "advertising_goal": "Evergreen brand lift",
+        "duration_seconds": 30
+    }))
+    .expect("project update input");
+    assert_eq!(project_update.id, "project-1");
 
     let asset: AssetImportCommandInput = serde_json::from_value(json!({
         "project_id": "project-1",
@@ -186,4 +202,85 @@ fn state_helpers_create_and_list_brand_project_memory_and_snapshot() {
     let versions = list_project_versions(&state, project.id.clone()).expect("list versions");
     assert_eq!(versions.len(), 1);
     assert_eq!(versions[0].id, version.id);
+}
+
+#[test]
+fn state_helpers_update_brand_and_project() {
+    let (_app, state) = test_state();
+
+    let brand = create_brand(
+        &state,
+        BrandInput {
+            name: "Atelier Joi".to_string(),
+            description: "Premium womenswear".to_string(),
+        },
+    )
+    .expect("create brand");
+    let project = create_project(
+        &state,
+        ProjectInput {
+            brand_id: brand.id.clone(),
+            title: "15s launch film".to_string(),
+            advertising_goal: "New seasonal drop".to_string(),
+            duration_seconds: 15,
+        },
+    )
+    .expect("create project");
+
+    let updated_brand = update_brand(
+        &state,
+        BrandUpdateInput {
+            id: brand.id.clone(),
+            name: "Atelier Joi Studio".to_string(),
+            description: "Campaign unit".to_string(),
+        },
+    )
+    .expect("update brand");
+    assert_eq!(updated_brand.name, "Atelier Joi Studio");
+    assert_eq!(updated_brand.description, "Campaign unit");
+
+    let updated_project = update_project(
+        &state,
+        ProjectUpdateInput {
+            id: project.id.clone(),
+            title: "30s launch film".to_string(),
+            advertising_goal: "Evergreen brand lift".to_string(),
+            duration_seconds: 30,
+        },
+    )
+    .expect("update project");
+    assert_eq!(updated_project.brand_id, brand.id);
+    assert_eq!(updated_project.title, "30s launch film");
+    assert_eq!(updated_project.advertising_goal, "Evergreen brand lift");
+    assert_eq!(updated_project.duration_seconds, 30);
+}
+
+#[test]
+fn update_helpers_return_not_found_for_missing_ids() {
+    let (_app, state) = test_state();
+
+    let brand_error = update_brand(
+        &state,
+        BrandUpdateInput {
+            id: "missing-brand".to_string(),
+            name: "Atelier Joi Studio".to_string(),
+            description: String::new(),
+        },
+    )
+    .expect_err("missing brand");
+    assert!(matches!(brand_error, JoiError::NotFound(message) if message == "brand missing-brand"));
+
+    let project_error = update_project(
+        &state,
+        ProjectUpdateInput {
+            id: "missing-project".to_string(),
+            title: "30s launch film".to_string(),
+            advertising_goal: String::new(),
+            duration_seconds: 30,
+        },
+    )
+    .expect_err("missing project");
+    assert!(
+        matches!(project_error, JoiError::NotFound(message) if message == "project missing-project")
+    );
 }
