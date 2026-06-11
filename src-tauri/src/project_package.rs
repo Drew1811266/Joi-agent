@@ -1,11 +1,11 @@
 use std::path::{Path, PathBuf};
 
 use rusqlite::Connection;
-use serde_json::json;
+use serde_json::{json, Value};
 
 use crate::assets::safe_join_asset_path;
 use crate::error::{JoiError, JoiResult};
-use crate::repositories::Repository;
+use crate::repositories::{BrandCreate, ProjectCreate, Repository};
 use crate::snapshots::ProjectSnapshotService;
 
 #[derive(Debug, Clone)]
@@ -18,6 +18,16 @@ pub struct ProjectExportInput {
 pub struct ProjectExportResult {
     pub project_json_path: PathBuf,
     pub assets_dir: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProjectImportInput {
+    pub project_json_path: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectImportResult {
+    pub project_id: String,
 }
 
 pub struct ProjectPackageService<'a> {
@@ -67,6 +77,63 @@ impl<'a> ProjectPackageService<'a> {
             assets_dir,
         })
     }
+
+    pub fn import_project(&self, input: ProjectImportInput) -> JoiResult<ProjectImportResult> {
+        let package = read_project_package(&input.project_json_path)?;
+        validate_package_format(&package)?;
+        let snapshot = package
+            .get("snapshot")
+            .ok_or_else(|| JoiError::Package("project package missing snapshot".to_string()))?;
+
+        let brand_snapshot = snapshot.get("brand").unwrap_or(&Value::Null);
+        let project_snapshot = snapshot.get("project").unwrap_or(&Value::Null);
+        let repo = Repository::new(self.connection);
+        let brand = repo.create_brand(BrandCreate {
+            name: string_or_default(brand_snapshot, "name", "Imported Brand"),
+            description: string_or_default(brand_snapshot, "description", ""),
+        })?;
+        let project = repo.create_project(ProjectCreate {
+            brand_id: brand.id,
+            title: string_or_default(project_snapshot, "title", "Imported Project"),
+            advertising_goal: string_or_default(project_snapshot, "advertising_goal", ""),
+            duration_seconds: integer_or_default(project_snapshot, "duration_seconds", 15),
+        })?;
+
+        Ok(ProjectImportResult {
+            project_id: project.id,
+        })
+    }
+}
+
+fn read_project_package(path: &Path) -> JoiResult<Value> {
+    let bytes = std::fs::read(path)?;
+    serde_json::from_slice(&bytes)
+        .map_err(|err| JoiError::Package(format!("malformed project package JSON: {err}")))
+}
+
+fn validate_package_format(package: &Value) -> JoiResult<()> {
+    let format_version = package
+        .get("format_version")
+        .and_then(Value::as_i64)
+        .ok_or_else(|| JoiError::Package("project package missing format_version".to_string()))?;
+    if format_version != 1 {
+        return Err(JoiError::Package(format!(
+            "unsupported project package format_version: {format_version}"
+        )));
+    }
+    Ok(())
+}
+
+fn string_or_default(parent: &Value, key: &str, default: &str) -> String {
+    parent
+        .get(key)
+        .and_then(Value::as_str)
+        .unwrap_or(default)
+        .to_string()
+}
+
+fn integer_or_default(parent: &Value, key: &str, default: i64) -> i64 {
+    parent.get(key).and_then(Value::as_i64).unwrap_or(default)
 }
 
 pub fn slugify_project_title(title: &str) -> String {
