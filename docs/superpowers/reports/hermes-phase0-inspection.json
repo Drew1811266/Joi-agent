@@ -1,0 +1,31 @@
+{
+  "status": "pass",
+  "checkout": "D:\\Software Project\\Joi-agent\\.external\\hermes-agent",
+  "missing_required_paths": [],
+  "errors": [],
+  "project": {
+    "name": "hermes-agent",
+    "version": "0.16.0",
+    "requires_python": ">=3.11,<3.14"
+  },
+  "desktop": {
+    "present": true,
+    "name": "hermes",
+    "version": "0.15.1",
+    "dependency_count": 80
+  },
+  "counts": {
+    "registered_tool_files": 30,
+    "skills": 75,
+    "optional_skills": 95
+  },
+  "capabilities": {
+    "has_toolsets": true,
+    "has_memory_tool": true,
+    "has_vision_tool": true,
+    "has_image_generation_tool": true,
+    "has_video_generation_tool": true,
+    "has_mcp_server": true,
+    "has_desktop_app": true
+  }
+}
