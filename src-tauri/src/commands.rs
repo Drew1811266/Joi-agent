@@ -8,6 +8,10 @@ use crate::agent_runtime::{
     start_agent_plan as start_local_agent_plan, AgentPlanInput, AgentPlanResult,
 };
 use crate::assets::{AssetImportInput, AssetService};
+use crate::beta_workflow::{
+    assess_beta_workflow, run_beta_workflow, BetaWorkflowRunInput, BetaWorkflowRunResult,
+    BetaWorkflowStatusResult,
+};
 use crate::db::Database;
 use crate::delivery_report::{
     generate_delivery_report as generate_delivery_report_service,
@@ -441,6 +445,22 @@ pub fn joi_apply_quality_review_suggestion(
 }
 
 #[tauri::command(rename_all = "snake_case")]
+pub fn joi_get_beta_workflow_status(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> JoiResult<BetaWorkflowStatusResult> {
+    get_beta_workflow_status(state.inner(), project_id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn joi_run_beta_workflow(
+    state: State<'_, AppState>,
+    input: BetaWorkflowRunInput,
+) -> JoiResult<BetaWorkflowRunResult> {
+    run_beta_workflow_command(state.inner(), input)
+}
+
+#[tauri::command(rename_all = "snake_case")]
 pub fn joi_generate_delivery_report(
     state: State<'_, AppState>,
     input: DeliveryReportGenerationInput,
@@ -845,6 +865,27 @@ pub fn apply_quality_review_suggestion(
     let runtime_status = get_agent_runtime_status(state)?;
     let db = lock_db(state)?;
     apply_quality_review_suggestion_service(
+        &Repository::new(db.connection()),
+        input,
+        runtime_status.hermes_version,
+    )
+}
+
+pub fn get_beta_workflow_status(
+    state: &AppState,
+    project_id: String,
+) -> JoiResult<BetaWorkflowStatusResult> {
+    let db = lock_db(state)?;
+    assess_beta_workflow(&Repository::new(db.connection()), &project_id)
+}
+
+pub fn run_beta_workflow_command(
+    state: &AppState,
+    input: BetaWorkflowRunInput,
+) -> JoiResult<BetaWorkflowRunResult> {
+    let runtime_status = get_agent_runtime_status(state)?;
+    let db = lock_db(state)?;
+    run_beta_workflow(
         &Repository::new(db.connection()),
         input,
         runtime_status.hermes_version,
