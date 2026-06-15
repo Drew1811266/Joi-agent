@@ -90,6 +90,98 @@ const mockStoryboardGenerationResult = {
   agent_events: [],
 };
 
+const mockPromptProfiles = [
+  {
+    id: "jimeng_video",
+    display_name: "Jimeng Video",
+    modality: "video",
+    default_negative_prompt: "avoid distorted garments",
+    required_fields: ["shot", "garment", "camera"],
+  },
+  {
+    id: "grok_video",
+    display_name: "Grok Video",
+    modality: "video",
+    default_negative_prompt: "avoid distorted garments",
+    required_fields: ["shot", "garment", "camera"],
+  },
+  {
+    id: "banana_2_image",
+    display_name: "Banana 2 Image",
+    modality: "image",
+    default_negative_prompt: "avoid distorted garments",
+    required_fields: ["image_brief", "garment", "model"],
+  },
+  {
+    id: "jimeng_image",
+    display_name: "Jimeng Image",
+    modality: "image",
+    default_negative_prompt: "avoid distorted garments",
+    required_fields: ["image_brief", "garment", "model"],
+  },
+  {
+    id: "gpt_image_2",
+    display_name: "GPT Image 2",
+    modality: "image",
+    default_negative_prompt: "avoid distorted garments",
+    required_fields: ["image_brief", "garment", "model"],
+  },
+];
+
+function mockPromptGenerationResult(targetPlatforms: string[]) {
+  const packages = targetPlatforms.map((platform, index) => {
+    const profile = mockPromptProfiles.find((item) => item.id === platform) ?? mockPromptProfiles[0];
+    const modality = profile.modality;
+    const promptTitle =
+      platform === "gpt_image_2"
+        ? "GPT Image 2 prompt"
+        : `${profile.display_name.replace(/\s+/g, " ")} prompt`;
+    const promptText = `${promptTitle}\nCreate a refined fashion advertising ${modality} prompt.`;
+    return {
+      package: {
+        id: `prompt-${platform}`,
+        project_id: "project-1",
+        shot_id: modality === "video" ? "shot-1" : null,
+        platform,
+        modality,
+        prompt_text: promptText,
+        negative_prompt: "avoid distorted garments, unreadable details",
+        parameters_json: {
+          format_version: "joi.prompt_package_parameters.v1",
+          adapter_profile_id: platform,
+        },
+        is_locked: false,
+        created_at: "2026-06-15T00:00:00Z",
+        updated_at: "2026-06-15T00:00:00Z",
+      },
+      adapter_display_name: profile.display_name,
+      shot_label: modality === "video" ? "Shot 1" : null,
+      copy_text: promptText,
+      missing_fields: [],
+      completeness: [],
+      sort_order: index + 1,
+    };
+  });
+  return {
+    packages,
+    agent_run: {
+      id: "run-prompts",
+      project_id: "project-1",
+      user_goal: "Generate model-specific prompt packages",
+      status: "completed",
+      runtime_kind: "hermes_core",
+      runtime_mode: "local_prompt_adapter_bridge",
+      runtime_version: "0.17.0",
+      roles_json: ["prompt_adapter", "reviewer"],
+      plan_json: [],
+      result_summary: `Generated ${packages.length} prompt package(s).`,
+      created_at: "2026-06-15T00:00:00Z",
+      updated_at: "2026-06-15T00:00:00Z",
+    },
+    agent_events: [],
+  };
+}
+
 describe("Joi workspace shell", () => {
   beforeEach(() => {
     invokeMock.mockReset();
@@ -141,7 +233,17 @@ describe("Joi workspace shell", () => {
         case "joi_list_product_understandings":
         case "joi_list_creative_directions":
         case "joi_list_research_reports":
+          return Promise.resolve([]);
         case "joi_list_storyboards":
+          return Promise.resolve([
+            {
+              storyboard: mockStoryboardGenerationResult.storyboard,
+              shots: mockStoryboardGenerationResult.shots.map((item) => item.shot),
+            },
+          ]);
+        case "joi_get_prompt_adapter_profiles":
+          return Promise.resolve(mockPromptProfiles);
+        case "joi_list_prompt_packages":
           return Promise.resolve([]);
         case "joi_get_agent_runtime_status":
           return Promise.resolve({
@@ -427,6 +529,32 @@ describe("Joi workspace shell", () => {
             },
             agent_events: [],
           });
+        case "joi_generate_prompt_packages":
+          return Promise.resolve(
+            mockPromptGenerationResult((args?.input?.target_platforms as string[]) ?? []),
+          );
+        case "joi_update_prompt_package":
+          return Promise.resolve({
+            package: {
+              id: args?.input?.id ?? "prompt-jimeng_video",
+              project_id: "project-1",
+              shot_id: "shot-1",
+              platform: "jimeng_video",
+              modality: "video",
+              prompt_text: args?.input?.prompt_text ?? "Edited prompt package text.",
+              negative_prompt: args?.input?.negative_prompt ?? "",
+              parameters_json: args?.input?.parameters_json ?? {},
+              is_locked: args?.input?.is_locked ?? false,
+              created_at: "2026-06-15T00:00:00Z",
+              updated_at: "2026-06-15T00:00:00Z",
+            },
+            adapter_display_name: "Jimeng Video",
+            shot_label: "Shot 1",
+            copy_text: args?.input?.prompt_text ?? "Edited prompt package text.",
+            missing_fields: [],
+            completeness: [],
+            sort_order: 1,
+          });
         default:
           return Promise.resolve(null);
       }
@@ -587,6 +715,72 @@ describe("Joi workspace shell", () => {
           }),
         }),
       );
+    });
+  });
+
+  test("generates edits and copies prompt packages", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "Spring Drop Film" });
+    fireEvent.click(screen.getByRole("button", { name: "Prompts" }));
+    expect(await screen.findByText("Jimeng Video")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Shot 1"));
+    fireEvent.change(screen.getByLabelText("Prompt direction"), {
+      target: { value: "Keep output production-ready." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /generate video prompts/i }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("joi_generate_prompt_packages", {
+        input: expect.objectContaining({
+          project_id: "project-1",
+          shot_ids: ["shot-1"],
+          target_platforms: ["jimeng_video", "grok_video"],
+          user_direction: "Keep output production-ready.",
+        }),
+      });
+    });
+    expect(await screen.findByText("Jimeng Video prompt")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Image brief"), {
+      target: { value: "Full-body ecommerce model photo, warm studio." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /generate image prompts/i }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("joi_generate_prompt_packages", {
+        input: expect.objectContaining({
+          project_id: "project-1",
+          shot_ids: [],
+          image_brief: "Full-body ecommerce model photo, warm studio.",
+          target_platforms: ["banana_2_image", "jimeng_image", "gpt_image_2"],
+        }),
+      });
+    });
+    expect(await screen.findByText("GPT Image 2 prompt")).toBeInTheDocument();
+
+    fireEvent.change(screen.getAllByLabelText("Prompt text")[0], {
+      target: { value: "Edited prompt package text." },
+    });
+    fireEvent.click(screen.getAllByRole("button", { name: /save prompt/i })[0]);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "joi_update_prompt_package",
+        expect.objectContaining({
+          input: expect.objectContaining({
+            prompt_text: "Edited prompt package text.",
+          }),
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: /copy prompt/i })[0]);
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalled();
     });
   });
 

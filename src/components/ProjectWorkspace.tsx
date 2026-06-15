@@ -4,6 +4,7 @@ import { BriefWorkspace, type BriefDraft, type ReferenceAssetDraft } from "./Bri
 import { EmptyState } from "./EmptyState";
 import { MemoryWorkspace, type MemoryCurationDraft } from "./MemoryWorkspace";
 import { MetricStrip } from "./MetricStrip";
+import { PromptWorkspace, type PromptDraft } from "./PromptWorkspace";
 import { ResearchWorkspace, type ResearchDraft } from "./ResearchWorkspace";
 import { StoryboardWorkspace, type StoryboardDraft } from "./StoryboardWorkspace";
 import type {
@@ -13,6 +14,9 @@ import type {
   CreativeDirection,
   MemoryCurationResult,
   MemoryEntry,
+  PromptAdapterProfile,
+  PromptPackageUpdateInput,
+  PromptPackageView,
   ProductUnderstanding,
   Project,
   ProjectVersion,
@@ -33,6 +37,8 @@ type ProjectWorkspaceProps = {
   briefDraft: BriefDraft;
   creativeDirections: CreativeDirection[];
   curatingMemory: boolean;
+  adapterProfiles: PromptAdapterProfile[];
+  generatingPrompts: boolean;
   generatingStoryboard: boolean;
   generatingUnderstanding: boolean;
   generatingResearch: boolean;
@@ -47,6 +53,8 @@ type ProjectWorkspaceProps = {
   onBrandDraftChange: (field: "name" | "description", value: string) => void;
   onMemoryCurationDraftChange: (field: keyof MemoryCurationDraft, value: string | boolean) => void;
   onMemoryDraftChange: (field: "content" | "source", value: string) => void;
+  onCopyPrompt: (copyText: string, packageId: string) => void;
+  onPromptDraftChange: (field: keyof PromptDraft, value: string | string[]) => void;
   onProjectDraftChange: (field: "title" | "advertising_goal" | "duration_seconds", value: string) => void;
   onReferenceAssetDraftChange: (field: keyof ReferenceAssetDraft, value: string) => void;
   onResearchDraftChange: (field: keyof ResearchDraft, value: string) => void;
@@ -56,13 +64,18 @@ type ProjectWorkspaceProps = {
   onSubmitBriefUnderstanding: () => void;
   onSubmitMemory: () => void;
   onSubmitMemoryCandidates: () => void;
+  onSubmitImagePrompts: () => void;
+  onSubmitVideoPrompts: () => void;
   onSubmitProject: () => void;
   onSubmitReferenceAsset: () => void;
   onSubmitResearchReport: () => void;
   onSubmitStoryboard: () => void;
   onUpdateMemoryStatus: (id: string, status: "accepted" | "rejected") => void;
+  onUpdatePromptPackage: (input: PromptPackageUpdateInput) => void;
   onUpdateShot: (input: ShotUpdateInput) => void;
   productUnderstandings: ProductUnderstanding[];
+  promptDraft: PromptDraft;
+  promptPackages: PromptPackageView[];
   projectDraft: {
     title: string;
     advertising_goal: string;
@@ -73,6 +86,7 @@ type ProjectWorkspaceProps = {
   researchDraft: ResearchDraft;
   researchReports: ResearchReport[];
   researchResult: ResearchReportResult | null;
+  savingPromptId: string | null;
   savingShotId: string | null;
   selectedBrand: Brand | null;
   selectedProject: Project | null;
@@ -85,11 +99,13 @@ type ProjectWorkspaceProps = {
 
 export function ProjectWorkspace({
   activeTab,
+  adapterProfiles,
   assets,
   brandDraft,
   briefDraft,
   creativeDirections,
   curatingMemory,
+  generatingPrompts,
   generatingStoryboard,
   generatingUnderstanding,
   generatingResearch,
@@ -101,6 +117,8 @@ export function ProjectWorkspace({
   onBrandDraftChange,
   onMemoryCurationDraftChange,
   onMemoryDraftChange,
+  onCopyPrompt,
+  onPromptDraftChange,
   onProjectDraftChange,
   onReferenceAssetDraftChange,
   onResearchDraftChange,
@@ -108,21 +126,27 @@ export function ProjectWorkspace({
   onStoryboardDraftChange,
   onSubmitBrand,
   onSubmitBriefUnderstanding,
+  onSubmitImagePrompts,
   onSubmitMemory,
   onSubmitMemoryCandidates,
+  onSubmitVideoPrompts,
   onSubmitProject,
   onSubmitReferenceAsset,
   onSubmitResearchReport,
   onSubmitStoryboard,
   onUpdateMemoryStatus,
+  onUpdatePromptPackage,
   onUpdateShot,
   productUnderstandings,
+  promptDraft,
+  promptPackages,
   projectDraft,
   referenceAssetDraft,
   regeneratingShotId,
   researchDraft,
   researchReports,
   researchResult,
+  savingPromptId,
   savingShotId,
   selectedBrand,
   selectedProject,
@@ -276,6 +300,22 @@ export function ProjectWorkspace({
           storyboards={storyboards}
         />
       ) : null}
+      {activeTab === "Prompts" ? (
+        <PromptWorkspace
+          adapterProfiles={adapterProfiles}
+          generatingPrompts={generatingPrompts}
+          onCopyPrompt={onCopyPrompt}
+          onPromptDraftChange={onPromptDraftChange}
+          onSubmitImagePrompts={onSubmitImagePrompts}
+          onSubmitVideoPrompts={onSubmitVideoPrompts}
+          onUpdatePromptPackage={onUpdatePromptPackage}
+          promptDraft={promptDraft}
+          promptPackages={promptPackages}
+          savingPromptId={savingPromptId}
+          selectedProject={selectedProject}
+          storyboards={storyboards}
+        />
+      ) : null}
       {activeTab === "Assets" ? <AssetsPanel assets={assets} /> : null}
       {activeTab === "Memory" ? (
         <MemoryWorkspace
@@ -293,7 +333,7 @@ export function ProjectWorkspace({
         />
       ) : null}
       {activeTab === "Versions" ? <VersionsPanel versions={versions} /> : null}
-      {!["Overview", "Brief", "Research", "Storyboard", "Assets", "Memory", "Versions"].includes(activeTab) ? (
+      {!["Overview", "Brief", "Research", "Storyboard", "Prompts", "Assets", "Memory", "Versions"].includes(activeTab) ? (
         <EmptyState
           body="This workspace section is reserved for the next content workflow milestone."
           title={`${activeTab} workspace`}

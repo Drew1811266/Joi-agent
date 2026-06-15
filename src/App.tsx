@@ -8,15 +8,18 @@ import {
   formatError,
   generateBriefUnderstanding,
   generateMemoryCandidates,
+  generatePromptPackages,
   generateResearchReport,
   generateStoryboard,
   getAgentRuntimeStatus,
+  getPromptAdapterProfiles,
   healthCheck,
   listAgentRuns,
   listAssets,
   listBrands,
   listCreativeDirections,
   listMemoryEntries,
+  listPromptPackages,
   listProductUnderstandings,
   listProjectVersions,
   listProjects,
@@ -27,6 +30,7 @@ import {
   startAgentPlan,
   updateBrand,
   updateMemoryStatus,
+  updatePromptPackage,
   updateProject,
   updateShot,
 } from "./api/joiApi";
@@ -34,6 +38,7 @@ import { AgentPanel } from "./components/AgentPanel";
 import { BrandProjectRail } from "./components/BrandProjectRail";
 import type { BriefDraft, ReferenceAssetDraft } from "./components/BriefWorkspace";
 import type { MemoryCurationDraft } from "./components/MemoryWorkspace";
+import type { PromptDraft } from "./components/PromptWorkspace";
 import { ProjectWorkspace } from "./components/ProjectWorkspace";
 import { researchSourceFromDraft, type ResearchDraft } from "./components/ResearchWorkspace";
 import type { StoryboardDraft } from "./components/StoryboardWorkspace";
@@ -49,6 +54,9 @@ import type {
   MemoryCurationResult,
   MemoryEntry,
   ProductUnderstanding,
+  PromptAdapterProfile,
+  PromptPackageUpdateInput,
+  PromptPackageView,
   Project,
   ProjectVersion,
   ResearchReport,
@@ -131,6 +139,14 @@ const emptyStoryboardDraft: StoryboardDraft = {
   regeneration_note: "",
 };
 
+const emptyPromptDraft: PromptDraft = {
+  selected_video_platforms: ["jimeng_video", "grok_video"],
+  selected_image_platforms: ["banana_2_image", "jimeng_image", "gpt_image_2"],
+  selected_shot_ids: [],
+  image_brief: "",
+  user_direction: "",
+};
+
 const defaultAgentGoal = "Plan the next content workflow steps for this project";
 
 export default function App() {
@@ -139,6 +155,7 @@ export default function App() {
   const [agentGoalDraft, setAgentGoalDraft] = useState(defaultAgentGoal);
   const [agentRuns, setAgentRuns] = useState<AgentRunWithEvents[]>([]);
   const [agentRuntimeStatus, setAgentRuntimeStatus] = useState<AgentRuntimeStatus | null>(null);
+  const [adapterProfiles, setAdapterProfiles] = useState<PromptAdapterProfile[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [brandDraft, setBrandDraft] = useState<BrandDraft>(emptyBrandDraft);
   const [brandMode, setBrandMode] = useState<FormMode>("edit");
@@ -148,6 +165,7 @@ export default function App() {
   const [curatingMemory, setCuratingMemory] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [generatingStoryboard, setGeneratingStoryboard] = useState(false);
+  const [generatingPrompts, setGeneratingPrompts] = useState(false);
   const [generatingUnderstanding, setGeneratingUnderstanding] = useState(false);
   const [generatingResearch, setGeneratingResearch] = useState(false);
   const [health, setHealth] = useState<HealthResponse | null>(null);
@@ -157,6 +175,8 @@ export default function App() {
   const [memoryDraft, setMemoryDraft] = useState<MemoryDraft>(emptyMemoryDraft);
   const [memoryEntries, setMemoryEntries] = useState<MemoryEntry[]>([]);
   const [productUnderstandings, setProductUnderstandings] = useState<ProductUnderstanding[]>([]);
+  const [promptDraft, setPromptDraft] = useState<PromptDraft>(emptyPromptDraft);
+  const [promptPackages, setPromptPackages] = useState<PromptPackageView[]>([]);
   const [projectDraft, setProjectDraft] = useState<ProjectDraft>(emptyProjectDraft);
   const [projectMode, setProjectMode] = useState<FormMode>("edit");
   const [projects, setProjects] = useState<Project[]>([]);
@@ -166,6 +186,7 @@ export default function App() {
   const [researchReports, setResearchReports] = useState<ResearchReport[]>([]);
   const [researchResult, setResearchResult] = useState<ResearchReportResult | null>(null);
   const [regeneratingShotId, setRegeneratingShotId] = useState<string | null>(null);
+  const [savingPromptId, setSavingPromptId] = useState<string | null>(null);
   const [savingSnapshot, setSavingSnapshot] = useState(false);
   const [savingShotId, setSavingShotId] = useState<string | null>(null);
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
@@ -231,6 +252,8 @@ export default function App() {
       setBriefDraft(emptyBriefDraft);
       setMemoryCurationDraft(emptyMemoryCurationDraft);
       setMemoryCurationResult(null);
+      setPromptDraft(emptyPromptDraft);
+      setPromptPackages([]);
       setReferenceAssetDraft(emptyReferenceAssetDraft);
       setResearchDraft(emptyResearchDraft);
       setResearchResult(null);
@@ -246,6 +269,8 @@ export default function App() {
       setBriefDraft(emptyBriefDraft);
       setMemoryCurationDraft(emptyMemoryCurationDraft);
       setMemoryCurationResult(null);
+      setPromptDraft(emptyPromptDraft);
+      setPromptPackages([]);
       setReferenceAssetDraft(emptyReferenceAssetDraft);
       setResearchDraft(emptyResearchDraft);
       setResearchReports([]);
@@ -266,13 +291,15 @@ export default function App() {
   async function loadInitialState() {
     try {
       setError(null);
-      const [healthResult, runtimeStatus, brandList] = await Promise.all([
+      const [healthResult, runtimeStatus, adapterProfileList, brandList] = await Promise.all([
         healthCheck(),
         getAgentRuntimeStatus(),
+        getPromptAdapterProfiles(),
         listBrands(),
       ]);
       setHealth(healthResult);
       setAgentRuntimeStatus(runtimeStatus);
+      setAdapterProfiles(adapterProfileList);
       setBrands(brandList);
       setActivityLog((entries) => [...entries, "Workspace connected to Joi backend."]);
     } catch (loadError) {
@@ -312,6 +339,7 @@ export default function App() {
         directionList,
         reportList,
         storyboardList,
+        promptPackageList,
         runList,
       ] = await Promise.all([
         listAssets(projectId),
@@ -321,6 +349,7 @@ export default function App() {
         listCreativeDirections(projectId),
         listResearchReports(projectId),
         listStoryboards(projectId),
+        listPromptPackages(projectId),
         listAgentRuns(projectId),
       ]);
       setAssets(assetList);
@@ -330,6 +359,7 @@ export default function App() {
       setCreativeDirections(directionList);
       setResearchReports(reportList);
       setStoryboards(storyboardList);
+      setPromptPackages(promptPackageList);
       setAgentRuns(runList);
     } catch (loadError) {
       setError(formatError(loadError));
@@ -352,6 +382,8 @@ export default function App() {
     setMemoryCurationResult(null);
     setMemoryEntries([]);
     setProductUnderstandings([]);
+    setPromptDraft(emptyPromptDraft);
+    setPromptPackages([]);
     setReferenceAssetDraft(emptyReferenceAssetDraft);
     setResearchDraft(emptyResearchDraft);
     setResearchReports([]);
@@ -377,6 +409,8 @@ export default function App() {
     setMemoryCurationResult(null);
     setMemoryEntries([]);
     setProductUnderstandings([]);
+    setPromptDraft(emptyPromptDraft);
+    setPromptPackages([]);
     setReferenceAssetDraft(emptyReferenceAssetDraft);
     setResearchDraft(emptyResearchDraft);
     setResearchReports([]);
@@ -760,6 +794,120 @@ export default function App() {
     }
   }
 
+  function handlePromptDraftChange(field: keyof PromptDraft, value: string | string[]) {
+    setPromptDraft((draft) => ({ ...draft, [field]: value }));
+  }
+
+  async function submitVideoPrompts() {
+    if (!selectedProject) {
+      setError("Select a project before generating prompt packages.");
+      return;
+    }
+    if (promptDraft.selected_shot_ids.length === 0) {
+      setError("Select at least one storyboard shot.");
+      return;
+    }
+    if (promptDraft.selected_video_platforms.length === 0) {
+      setError("Select at least one video adapter.");
+      return;
+    }
+    await submitPromptGeneration(promptDraft.selected_video_platforms, promptDraft.selected_shot_ids, "");
+  }
+
+  async function submitImagePrompts() {
+    if (!selectedProject) {
+      setError("Select a project before generating prompt packages.");
+      return;
+    }
+    if (!promptDraft.image_brief.trim()) {
+      setError("Image brief is required.");
+      return;
+    }
+    if (promptDraft.selected_image_platforms.length === 0) {
+      setError("Select at least one image adapter.");
+      return;
+    }
+    await submitPromptGeneration(promptDraft.selected_image_platforms, [], promptDraft.image_brief);
+  }
+
+  async function submitPromptGeneration(
+    targetPlatforms: string[],
+    shotIds: string[],
+    imageBrief: string,
+  ) {
+    if (!selectedProject) {
+      return;
+    }
+
+    try {
+      setGeneratingPrompts(true);
+      setError(null);
+      const result = await generatePromptPackages({
+        project_id: selectedProject.id,
+        shot_ids: shotIds,
+        image_brief: imageBrief,
+        target_platforms: targetPlatforms,
+        user_direction: promptDraft.user_direction,
+      });
+      await refreshProjectState(selectedProject.id);
+      setPromptPackages(result.packages);
+      setAgentRuns((runs) => [
+        { run: result.agent_run, events: result.agent_events },
+        ...runs.filter((item) => item.run.id !== result.agent_run.id),
+      ]);
+      setActivityLog((entries) => [
+        ...entries,
+        `Generated ${result.packages.length} prompt package(s).`,
+      ]);
+    } catch (submitError) {
+      setError(formatError(submitError));
+    } finally {
+      setGeneratingPrompts(false);
+    }
+  }
+
+  async function handleUpdatePromptPackage(input: PromptPackageUpdateInput) {
+    try {
+      setSavingPromptId(input.id);
+      setError(null);
+      const updated = await updatePromptPackage(input);
+      if (selectedProject) {
+        await refreshProjectState(selectedProject.id);
+      }
+      setPromptPackages((packages) => {
+        let replaced = false;
+        const next = packages.map((item) => {
+          if (item.package.id !== updated.package.id) {
+            return item;
+          }
+          replaced = true;
+          return updated;
+        });
+        return replaced ? next : [updated, ...next];
+      });
+      setActivityLog((entries) => [...entries, `Updated prompt package ${updated.package.id}.`]);
+    } catch (submitError) {
+      setError(formatError(submitError));
+    } finally {
+      setSavingPromptId(null);
+    }
+  }
+
+  async function handleCopyPrompt(copyText: string, packageId: string) {
+    if (!navigator.clipboard?.writeText) {
+      setError("Clipboard is unavailable.");
+      return;
+    }
+
+    try {
+      setError(null);
+      await navigator.clipboard.writeText(copyText);
+      setActivityLog((entries) => [...entries, `Copied prompt package ${packageId}.`]);
+    } catch (copyError) {
+      setError(formatError(copyError));
+    }
+  }
+
   async function handleSaveSnapshot() {
     if (!selectedProject) {
       setError("Select a project before saving a snapshot.");
@@ -836,11 +984,13 @@ export default function App() {
 
         <ProjectWorkspace
           activeTab={activeTab}
+          adapterProfiles={adapterProfiles}
           assets={assets}
           brandDraft={brandDraft}
           briefDraft={briefDraft}
           creativeDirections={creativeDirections}
           curatingMemory={curatingMemory}
+          generatingPrompts={generatingPrompts}
           generatingUnderstanding={generatingUnderstanding}
           generatingResearch={generatingResearch}
           memoryCurationDraft={memoryCurationDraft}
@@ -849,10 +999,12 @@ export default function App() {
           memoryDraft={memoryDraft}
           memoryEntries={memoryEntries}
           onBrandDraftChange={(field, value) => setBrandDraft((draft) => ({ ...draft, [field]: value }))}
+          onCopyPrompt={handleCopyPrompt}
           onMemoryCurationDraftChange={(field, value) =>
             setMemoryCurationDraft((draft) => ({ ...draft, [field]: value }))
           }
           onMemoryDraftChange={(field, value) => setMemoryDraft((draft) => ({ ...draft, [field]: value }))}
+          onPromptDraftChange={handlePromptDraftChange}
           onProjectDraftChange={(field, value) =>
             setProjectDraft((draft) => ({
               ...draft,
@@ -868,22 +1020,28 @@ export default function App() {
           }
           onSubmitBrand={submitBrand}
           onSubmitBriefUnderstanding={submitBriefUnderstanding}
+          onSubmitImagePrompts={submitImagePrompts}
           onSubmitMemory={submitMemory}
           onSubmitMemoryCandidates={submitMemoryCandidates}
           onSubmitProject={submitProject}
           onSubmitReferenceAsset={submitReferenceAsset}
           onSubmitResearchReport={submitResearchReport}
           onSubmitStoryboard={submitStoryboardGeneration}
+          onSubmitVideoPrompts={submitVideoPrompts}
+          onUpdatePromptPackage={handleUpdatePromptPackage}
           onUpdateShot={handleUpdateShot}
           onUpdateMemoryStatus={handleUpdateMemoryStatus}
           onRegenerateShot={handleRegenerateShot}
           productUnderstandings={productUnderstandings}
+          promptDraft={promptDraft}
+          promptPackages={promptPackages}
           projectDraft={projectDraft}
           referenceAssetDraft={referenceAssetDraft}
           researchDraft={researchDraft}
           researchReports={researchReports}
           researchResult={researchResult}
           regeneratingShotId={regeneratingShotId}
+          savingPromptId={savingPromptId}
           savingShotId={savingShotId}
           selectedBrand={selectedBrand}
           selectedProject={selectedProject}

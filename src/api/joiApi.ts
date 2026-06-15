@@ -19,6 +19,11 @@ import type {
   MemoryEntryInput,
   MemoryListInput,
   MemoryStatusInput,
+  PromptAdapterProfile,
+  PromptGenerationInput,
+  PromptGenerationResult,
+  PromptPackageUpdateInput,
+  PromptPackageView,
   Project,
   ProjectInput,
   ProjectUpdateInput,
@@ -148,6 +153,24 @@ export function updateShot(input: ShotUpdateInput): Promise<StoryboardShotView> 
 
 export function regenerateShot(input: ShotRegenerationInput): Promise<ShotRegenerationResult> {
   return invoke<ShotRegenerationResult>("joi_regenerate_shot", { input });
+}
+
+export function getPromptAdapterProfiles(): Promise<PromptAdapterProfile[]> {
+  return invoke<PromptAdapterProfile[]>("joi_get_prompt_adapter_profiles");
+}
+
+export function generatePromptPackages(
+  input: PromptGenerationInput,
+): Promise<PromptGenerationResult> {
+  return invoke<PromptGenerationResult>("joi_generate_prompt_packages", { input });
+}
+
+export function listPromptPackages(projectId: string): Promise<PromptPackageView[]> {
+  return invoke<PromptPackageView[]>("joi_list_prompt_packages", { project_id: projectId });
+}
+
+export function updatePromptPackage(input: PromptPackageUpdateInput): Promise<PromptPackageView> {
+  return invoke<PromptPackageView>("joi_update_prompt_package", { input });
 }
 
 export function getAgentRuntimeStatus(): Promise<AgentRuntimeStatus> {

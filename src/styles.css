@@ -73,6 +73,21 @@ label {
   font-weight: 650;
 }
 
+fieldset {
+  min-width: 0;
+  border: 1px solid #e2e6df;
+  border-radius: 8px;
+  margin: 0;
+  padding: 10px;
+}
+
+legend {
+  color: #66706a;
+  font-size: 12px;
+  font-weight: 750;
+  padding: 0 4px;
+}
+
 .app-shell {
   min-height: 100vh;
   display: grid;
@@ -358,6 +373,11 @@ form {
   gap: 14px;
 }
 
+.prompt-layout {
+  display: grid;
+  gap: 14px;
+}
+
 .brief-form {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -370,6 +390,22 @@ form {
 .storyboard-toolbar {
   grid-template-columns: minmax(0, 1fr) minmax(130px, 160px) minmax(120px, 150px) auto;
   align-items: end;
+}
+
+.prompt-generator-form {
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.55fr) auto;
+  align-items: end;
+}
+
+.prompt-generator-form.image {
+  border-top: 1px solid #e2e6df;
+  padding-top: 14px;
+}
+
+.prompt-option-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: 8px;
 }
 
 .checkbox-label {
@@ -535,6 +571,62 @@ form {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.prompt-package-list {
+  display: grid;
+  gap: 12px;
+}
+
+.prompt-package-row {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid #d9ddd4;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 14px;
+}
+
+.prompt-package-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.prompt-package-heading div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.prompt-package-heading strong,
+.prompt-package-heading span,
+.prompt-package-heading small {
+  overflow-wrap: anywhere;
+}
+
+.prompt-package-heading strong {
+  color: #1d2a22;
+  font-size: 14px;
+}
+
+.prompt-package-heading span,
+.prompt-package-heading small {
+  color: #66706a;
+  font-size: 12px;
+}
+
+.prompt-edit-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.prompt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .agent-panel {
   border-left: 1px solid #d9ddd4;
   padding: 18px 14px;
@@ -640,6 +732,8 @@ form {
   .research-layout,
   .memory-layout,
   .memory-candidate-form,
+  .prompt-generator-form,
+  .prompt-edit-form,
   .storyboard-toolbar,
   .shot-edit-form,
   .inline-form {
@@ -652,6 +746,7 @@ form {
 
   .workflow-map,
   .metric-strip,
+  .prompt-option-grid,
   .shot-meta-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -691,8 +786,14 @@ form {
   }
 
   .shot-heading,
-  .shot-actions {
+  .shot-actions,
+  .prompt-package-heading,
+  .prompt-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .prompt-option-grid {
+    grid-template-columns: 1fr;
   }
 }

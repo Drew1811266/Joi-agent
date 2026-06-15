@@ -116,6 +116,20 @@ export type StoryboardWithShots = {
   shots: Shot[];
 };
 
+export type PromptPackage = {
+  id: string;
+  project_id: string;
+  shot_id: string | null;
+  platform: string;
+  modality: string;
+  prompt_text: string;
+  negative_prompt: string;
+  parameters_json: unknown;
+  is_locked: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ProjectVersion = {
   id: string;
   project_id: string;
@@ -305,6 +319,51 @@ export type ShotRegenerationResult = {
   shot: StoryboardShotView;
   agent_run: AgentRun;
   agent_events: AgentRunEvent[];
+};
+
+export type PromptAdapterProfile = {
+  id: string;
+  display_name: string;
+  modality: string;
+  default_negative_prompt: string;
+  required_fields: string[];
+};
+
+export type PromptGenerationInput = {
+  project_id: string;
+  shot_ids: string[];
+  image_brief: string;
+  target_platforms: string[];
+  user_direction: string;
+};
+
+export type PromptCompletenessCheck = {
+  field: string;
+  label: string;
+  present: boolean;
+  message: string;
+};
+
+export type PromptPackageView = {
+  package: PromptPackage;
+  adapter_display_name: string;
+  completeness: PromptCompletenessCheck[];
+  missing_fields: string[];
+  copy_text: string;
+};
+
+export type PromptGenerationResult = {
+  packages: PromptPackageView[];
+  agent_run: AgentRun;
+  agent_events: AgentRunEvent[];
+};
+
+export type PromptPackageUpdateInput = {
+  id: string;
+  prompt_text: string;
+  negative_prompt: string;
+  parameters_json: unknown;
+  is_locked: boolean;
 };
 
 export type ResearchFinding = {
