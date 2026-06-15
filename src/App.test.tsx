@@ -9,10 +9,92 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: (command: string, payload?: unknown) => invokeMock(command, payload),
 }));
 
+const mockStoryboardGenerationResult = {
+  storyboard: {
+    id: "storyboard-1",
+    project_id: "project-1",
+    title: "Spring Drop Film storyboard",
+    duration_seconds: 15,
+    created_at: "2026-06-15T00:00:00Z",
+    updated_at: "2026-06-15T00:00:00Z",
+  },
+  shots: [
+    {
+      shot: {
+        id: "shot-1",
+        storyboard_id: "storyboard-1",
+        shot_number: 1,
+        duration_seconds: 3,
+        description: "Model enters a clean studio frame wearing the trench.",
+        model_action: "Model walks forward.",
+        camera_movement: "slow push-in",
+        scene: "minimal warm studio",
+        lighting: "soft side light",
+        subtitle_or_voiceover: "Light enough for changing weather",
+        rationale: "Opening shot establishes product and brand mood.",
+        is_locked: false,
+        metadata_json: {
+          format_version: "joi.shot_metadata.v1",
+          garment_focus: "water-resistant cotton trench silhouette",
+          transition: "cut on movement",
+        },
+        created_at: "2026-06-15T00:00:00Z",
+        updated_at: "2026-06-15T00:00:00Z",
+      },
+      visual_description: "Model enters a clean studio frame wearing the trench.",
+      garment_focus: "water-resistant cotton trench silhouette",
+      transition: "cut on movement",
+    },
+    {
+      shot: {
+        id: "shot-2",
+        storyboard_id: "storyboard-1",
+        shot_number: 2,
+        duration_seconds: 3,
+        description: "Close fabric texture detail fills the frame.",
+        model_action: "Model lifts sleeve edge.",
+        camera_movement: "macro slide",
+        scene: "studio insert",
+        lighting: "grazing highlight",
+        subtitle_or_voiceover: "Texture that moves",
+        rationale: "Product proof shot.",
+        is_locked: false,
+        metadata_json: {
+          format_version: "joi.shot_metadata.v1",
+          garment_focus: "fabric texture",
+          transition: "match cut",
+        },
+        created_at: "2026-06-15T00:00:00Z",
+        updated_at: "2026-06-15T00:00:00Z",
+      },
+      visual_description: "Close fabric texture detail fills the frame.",
+      garment_focus: "fabric texture",
+      transition: "match cut",
+    },
+  ],
+  total_duration_seconds: 15,
+  agent_run: {
+    id: "run-storyboard",
+    project_id: "project-1",
+    user_goal: "Make the opening tactile and premium.",
+    status: "completed",
+    runtime_kind: "hermes_core",
+    runtime_mode: "local_storyboard_bridge",
+    runtime_version: "0.16.0",
+    roles_json: ["planner", "storyboard_writer", "reviewer"],
+    plan_json: [],
+    result_summary: "Generated 2 shot storyboard for Spring Drop Film.",
+    created_at: "2026-06-15T00:00:00Z",
+    updated_at: "2026-06-15T00:00:00Z",
+  },
+  agent_events: [],
+};
+
 describe("Joi workspace shell", () => {
   beforeEach(() => {
     invokeMock.mockReset();
-    invokeMock.mockImplementation((command: string) => {
+    invokeMock.mockImplementation((command: string, payload?: unknown) => {
+      const args = payload as { input?: Record<string, unknown> } | undefined;
       switch (command) {
         case "joi_health_check":
           return Promise.resolve({
@@ -59,6 +141,7 @@ describe("Joi workspace shell", () => {
         case "joi_list_product_understandings":
         case "joi_list_creative_directions":
         case "joi_list_research_reports":
+        case "joi_list_storyboards":
           return Promise.resolve([]);
         case "joi_get_agent_runtime_status":
           return Promise.resolve({
@@ -318,6 +401,32 @@ describe("Joi workspace shell", () => {
             },
             agent_events: [],
           });
+        case "joi_generate_storyboard":
+          return Promise.resolve(mockStoryboardGenerationResult);
+        case "joi_update_shot":
+          return Promise.resolve({
+            shot: {
+              ...mockStoryboardGenerationResult.shots[0].shot,
+              description: args?.input?.visual_description,
+            },
+            visual_description: args?.input?.visual_description,
+            garment_focus: args?.input?.garment_focus,
+            transition: args?.input?.transition,
+          });
+        case "joi_regenerate_shot":
+          return Promise.resolve({
+            shot: {
+              ...mockStoryboardGenerationResult.shots[1],
+              visual_description: "Regenerated macro fabric insert.",
+              garment_focus: "fabric texture",
+            },
+            agent_run: {
+              ...mockStoryboardGenerationResult.agent_run,
+              id: "run-storyboard-regen",
+              runtime_mode: "local_storyboard_regeneration_bridge",
+            },
+            agent_events: [],
+          });
         default:
           return Promise.resolve(null);
       }
@@ -421,6 +530,63 @@ describe("Joi workspace shell", () => {
           status: "accepted",
         },
       });
+    });
+  });
+
+  test("generates edits and regenerates storyboard shots", async () => {
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "Spring Drop Film" });
+    fireEvent.click(screen.getByRole("button", { name: "Storyboard" }));
+    fireEvent.change(screen.getByLabelText("Storyboard direction"), {
+      target: { value: "Make the opening tactile and premium." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /generate storyboard/i }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("joi_generate_storyboard", {
+        input: {
+          project_id: "project-1",
+          user_direction: "Make the opening tactile and premium.",
+          preferred_duration_seconds: 15,
+          preferred_shot_count: 5,
+        },
+      });
+    });
+    expect(await screen.findByText("water-resistant cotton trench silhouette")).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole("button", { name: /edit shot/i })[0]);
+    fireEvent.change(screen.getByLabelText("Visual description"), {
+      target: { value: "Edited opening product entrance." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save shot/i }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "joi_update_shot",
+        expect.objectContaining({
+          input: expect.objectContaining({
+            id: "shot-1",
+            visual_description: "Edited opening product entrance.",
+          }),
+        }),
+      );
+    });
+
+    fireEvent.change(screen.getByLabelText("Regeneration note"), {
+      target: { value: "Make shot 2 a clearer macro fabric insert." },
+    });
+    fireEvent.click(screen.getAllByRole("button", { name: /regenerate shot/i })[1]);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "joi_regenerate_shot",
+        expect.objectContaining({
+          input: expect.objectContaining({
+            project_id: "project-1",
+            storyboard_id: "storyboard-1",
+            shot_id: "shot-2",
+          }),
+        }),
+      );
     });
   });
 

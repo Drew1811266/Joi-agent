@@ -84,6 +84,38 @@ export type ResearchReport = {
   updated_at: string;
 };
 
+export type Storyboard = {
+  id: string;
+  project_id: string;
+  title: string;
+  duration_seconds: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Shot = {
+  id: string;
+  storyboard_id: string;
+  shot_number: number;
+  duration_seconds: number;
+  description: string;
+  model_action: string;
+  camera_movement: string;
+  scene: string;
+  lighting: string;
+  subtitle_or_voiceover: string;
+  rationale: string;
+  is_locked: boolean;
+  metadata_json: unknown;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StoryboardWithShots = {
+  storyboard: Storyboard;
+  shots: Shot[];
+};
+
 export type ProjectVersion = {
   id: string;
   project_id: string;
@@ -223,6 +255,56 @@ export type ResearchReportInput = {
   market_focus: string;
   platform_focus: string[];
   source_materials: ResearchSourceInput[];
+};
+
+export type StoryboardGenerationInput = {
+  project_id: string;
+  user_direction: string;
+  preferred_duration_seconds: number | null;
+  preferred_shot_count: number | null;
+};
+
+export type StoryboardShotView = {
+  shot: Shot;
+  visual_description: string;
+  garment_focus: string;
+  transition: string;
+};
+
+export type StoryboardGenerationResult = {
+  storyboard: Storyboard;
+  shots: StoryboardShotView[];
+  total_duration_seconds: number;
+  agent_run: AgentRun;
+  agent_events: AgentRunEvent[];
+};
+
+export type ShotUpdateInput = {
+  id: string;
+  duration_seconds: number;
+  visual_description: string;
+  model_action: string;
+  garment_focus: string;
+  camera_movement: string;
+  scene: string;
+  lighting: string;
+  transition: string;
+  subtitle_or_text: string;
+  rationale: string;
+  is_locked: boolean;
+};
+
+export type ShotRegenerationInput = {
+  project_id: string;
+  storyboard_id: string;
+  shot_id: string;
+  revision_note: string;
+};
+
+export type ShotRegenerationResult = {
+  shot: StoryboardShotView;
+  agent_run: AgentRun;
+  agent_events: AgentRunEvent[];
 };
 
 export type ResearchFinding = {

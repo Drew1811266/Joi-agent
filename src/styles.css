@@ -353,12 +353,22 @@ form {
   gap: 14px;
 }
 
+.storyboard-layout {
+  display: grid;
+  gap: 14px;
+}
+
 .brief-form {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .memory-candidate-form {
   grid-template-columns: minmax(0, 1fr) minmax(180px, 220px) auto;
+  align-items: end;
+}
+
+.storyboard-toolbar {
+  grid-template-columns: minmax(0, 1fr) minmax(130px, 160px) minmax(120px, 150px) auto;
   align-items: end;
 }
 
@@ -453,6 +463,76 @@ form {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 6px;
+}
+
+.storyboard-shot-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.shot-row {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid #d9ddd4;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 14px;
+}
+
+.shot-heading,
+.shot-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.shot-heading strong {
+  font-size: 14px;
+}
+
+.shot-heading span {
+  color: #66706a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.shot-row p,
+.shot-row small,
+.shot-meta-grid dd {
+  overflow-wrap: anywhere;
+}
+
+.shot-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.shot-meta-grid div {
+  min-width: 0;
+  border: 1px solid #e2e6df;
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.shot-meta-grid dt {
+  color: #66706a;
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.shot-meta-grid dd {
+  margin: 2px 0 0;
+  color: #26332b;
+  font-size: 13px;
+}
+
+.shot-edit-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .agent-panel {
@@ -560,6 +640,8 @@ form {
   .research-layout,
   .memory-layout,
   .memory-candidate-form,
+  .storyboard-toolbar,
+  .shot-edit-form,
   .inline-form {
     grid-template-columns: 1fr;
   }
@@ -569,7 +651,8 @@ form {
   }
 
   .workflow-map,
-  .metric-strip {
+  .metric-strip,
+  .shot-meta-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -601,5 +684,15 @@ form {
 
   .workspace-main {
     padding: 14px;
+  }
+
+  .shot-meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .shot-heading,
+  .shot-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

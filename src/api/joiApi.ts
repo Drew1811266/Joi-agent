@@ -29,6 +29,13 @@ import type {
   ResearchReportInput,
   ResearchReportResult,
   SnapshotInput,
+  ShotRegenerationInput,
+  ShotRegenerationResult,
+  ShotUpdateInput,
+  StoryboardGenerationInput,
+  StoryboardGenerationResult,
+  StoryboardShotView,
+  StoryboardWithShots,
 } from "../types/joi";
 
 export function formatError(error: unknown): string {
@@ -125,6 +132,22 @@ export function generateResearchReport(input: ResearchReportInput): Promise<Rese
 
 export function listResearchReports(projectId: string): Promise<ResearchReport[]> {
   return invoke<ResearchReport[]>("joi_list_research_reports", { project_id: projectId });
+}
+
+export function generateStoryboard(input: StoryboardGenerationInput): Promise<StoryboardGenerationResult> {
+  return invoke<StoryboardGenerationResult>("joi_generate_storyboard", { input });
+}
+
+export function listStoryboards(projectId: string): Promise<StoryboardWithShots[]> {
+  return invoke<StoryboardWithShots[]>("joi_list_storyboards", { project_id: projectId });
+}
+
+export function updateShot(input: ShotUpdateInput): Promise<StoryboardShotView> {
+  return invoke<StoryboardShotView>("joi_update_shot", { input });
+}
+
+export function regenerateShot(input: ShotRegenerationInput): Promise<ShotRegenerationResult> {
+  return invoke<ShotRegenerationResult>("joi_regenerate_shot", { input });
 }
 
 export function getAgentRuntimeStatus(): Promise<AgentRuntimeStatus> {

@@ -9,6 +9,7 @@ import {
   generateBriefUnderstanding,
   generateMemoryCandidates,
   generateResearchReport,
+  generateStoryboard,
   getAgentRuntimeStatus,
   healthCheck,
   listAgentRuns,
@@ -20,11 +21,14 @@ import {
   listProjectVersions,
   listProjects,
   listResearchReports,
+  listStoryboards,
+  regenerateShot,
   saveProjectSnapshot,
   startAgentPlan,
   updateBrand,
   updateMemoryStatus,
   updateProject,
+  updateShot,
 } from "./api/joiApi";
 import { AgentPanel } from "./components/AgentPanel";
 import { BrandProjectRail } from "./components/BrandProjectRail";
@@ -32,6 +36,7 @@ import type { BriefDraft, ReferenceAssetDraft } from "./components/BriefWorkspac
 import type { MemoryCurationDraft } from "./components/MemoryWorkspace";
 import { ProjectWorkspace } from "./components/ProjectWorkspace";
 import { researchSourceFromDraft, type ResearchDraft } from "./components/ResearchWorkspace";
+import type { StoryboardDraft } from "./components/StoryboardWorkspace";
 import { TopBar } from "./components/TopBar";
 import type {
   AgentRunWithEvents,
@@ -48,6 +53,9 @@ import type {
   ProjectVersion,
   ResearchReport,
   ResearchReportResult,
+  ShotUpdateInput,
+  StoryboardGenerationResult,
+  StoryboardWithShots,
 } from "./types/joi";
 
 type BrandDraft = {
@@ -116,6 +124,13 @@ const emptyResearchDraft: ResearchDraft = {
   source_excerpt: "",
 };
 
+const emptyStoryboardDraft: StoryboardDraft = {
+  user_direction: "",
+  preferred_duration_seconds: "15",
+  preferred_shot_count: "5",
+  regeneration_note: "",
+};
+
 const defaultAgentGoal = "Plan the next content workflow steps for this project";
 
 export default function App() {
@@ -132,6 +147,7 @@ export default function App() {
   const [creativeDirections, setCreativeDirections] = useState<CreativeDirection[]>([]);
   const [curatingMemory, setCuratingMemory] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [generatingStoryboard, setGeneratingStoryboard] = useState(false);
   const [generatingUnderstanding, setGeneratingUnderstanding] = useState(false);
   const [generatingResearch, setGeneratingResearch] = useState(false);
   const [health, setHealth] = useState<HealthResponse | null>(null);
@@ -149,10 +165,15 @@ export default function App() {
   const [researchDraft, setResearchDraft] = useState<ResearchDraft>(emptyResearchDraft);
   const [researchReports, setResearchReports] = useState<ResearchReport[]>([]);
   const [researchResult, setResearchResult] = useState<ResearchReportResult | null>(null);
+  const [regeneratingShotId, setRegeneratingShotId] = useState<string | null>(null);
   const [savingSnapshot, setSavingSnapshot] = useState(false);
+  const [savingShotId, setSavingShotId] = useState<string | null>(null);
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [startingAgentPlan, setStartingAgentPlan] = useState(false);
+  const [storyboardDraft, setStoryboardDraft] = useState<StoryboardDraft>(emptyStoryboardDraft);
+  const [storyboardResult, setStoryboardResult] = useState<StoryboardGenerationResult | null>(null);
+  const [storyboards, setStoryboards] = useState<StoryboardWithShots[]>([]);
   const [understandingResult, setUnderstandingResult] = useState<BriefUnderstandingResult | null>(null);
   const [versions, setVersions] = useState<ProjectVersion[]>([]);
 
@@ -213,6 +234,11 @@ export default function App() {
       setReferenceAssetDraft(emptyReferenceAssetDraft);
       setResearchDraft(emptyResearchDraft);
       setResearchResult(null);
+      setStoryboardDraft({
+        ...emptyStoryboardDraft,
+        preferred_duration_seconds: String(selectedProject.duration_seconds),
+      });
+      setStoryboardResult(null);
       setUnderstandingResult(null);
       void refreshProjectState(selectedProject.id);
     } else {
@@ -224,6 +250,9 @@ export default function App() {
       setResearchDraft(emptyResearchDraft);
       setResearchReports([]);
       setResearchResult(null);
+      setStoryboardDraft(emptyStoryboardDraft);
+      setStoryboardResult(null);
+      setStoryboards([]);
       setUnderstandingResult(null);
       setAssets([]);
       setAgentRuns([]);
@@ -282,6 +311,7 @@ export default function App() {
         understandingList,
         directionList,
         reportList,
+        storyboardList,
         runList,
       ] = await Promise.all([
         listAssets(projectId),
@@ -290,6 +320,7 @@ export default function App() {
         listProductUnderstandings(projectId),
         listCreativeDirections(projectId),
         listResearchReports(projectId),
+        listStoryboards(projectId),
         listAgentRuns(projectId),
       ]);
       setAssets(assetList);
@@ -298,6 +329,7 @@ export default function App() {
       setProductUnderstandings(understandingList);
       setCreativeDirections(directionList);
       setResearchReports(reportList);
+      setStoryboards(storyboardList);
       setAgentRuns(runList);
     } catch (loadError) {
       setError(formatError(loadError));
@@ -324,6 +356,9 @@ export default function App() {
     setResearchDraft(emptyResearchDraft);
     setResearchReports([]);
     setResearchResult(null);
+    setStoryboardDraft(emptyStoryboardDraft);
+    setStoryboardResult(null);
+    setStoryboards([]);
     setUnderstandingResult(null);
     setVersions([]);
     setActiveTab("Overview");
@@ -346,6 +381,9 @@ export default function App() {
     setResearchDraft(emptyResearchDraft);
     setResearchReports([]);
     setResearchResult(null);
+    setStoryboardDraft(emptyStoryboardDraft);
+    setStoryboardResult(null);
+    setStoryboards([]);
     setUnderstandingResult(null);
     setVersions([]);
     setActiveTab("Overview");
@@ -617,6 +655,111 @@ export default function App() {
     }
   }
 
+  async function submitStoryboardGeneration() {
+    if (!selectedProject) {
+      setError("Select a project before generating a storyboard.");
+      return;
+    }
+
+    const duration = Number(storyboardDraft.preferred_duration_seconds);
+    const shotCount = Number(storyboardDraft.preferred_shot_count);
+    const preferredDuration =
+      Number.isFinite(duration) && duration > 0 ? duration : selectedProject.duration_seconds;
+    const preferredShotCount = Number.isFinite(shotCount) && shotCount > 0 ? shotCount : null;
+
+    try {
+      setGeneratingStoryboard(true);
+      setError(null);
+      const result = await generateStoryboard({
+        project_id: selectedProject.id,
+        user_direction: storyboardDraft.user_direction,
+        preferred_duration_seconds: preferredDuration,
+        preferred_shot_count: preferredShotCount,
+      });
+      setStoryboardResult(result);
+      await refreshProjectState(selectedProject.id);
+      setAgentRuns((runs) => [
+        { run: result.agent_run, events: result.agent_events },
+        ...runs.filter((item) => item.run.id !== result.agent_run.id),
+      ]);
+      setActivityLog((entries) => [
+        ...entries,
+        `Generated storyboard ${result.storyboard.id}.`,
+      ]);
+    } catch (submitError) {
+      setError(formatError(submitError));
+    } finally {
+      setGeneratingStoryboard(false);
+    }
+  }
+
+  async function handleUpdateShot(input: ShotUpdateInput) {
+    try {
+      setSavingShotId(input.id);
+      setError(null);
+      const updated = await updateShot(input);
+      setStoryboardResult((result) =>
+        result
+          ? {
+              ...result,
+              shots: result.shots.map((shot) =>
+                shot.shot.id === updated.shot.id ? updated : shot,
+              ),
+            }
+          : result,
+      );
+      if (selectedProject) {
+        await refreshProjectState(selectedProject.id);
+      }
+      setActivityLog((entries) => [...entries, `Updated shot ${updated.shot.shot_number}.`]);
+    } catch (submitError) {
+      setError(formatError(submitError));
+    } finally {
+      setSavingShotId(null);
+    }
+  }
+
+  async function handleRegenerateShot(storyboardId: string, shotId: string) {
+    if (!selectedProject) {
+      setError("Select a project before regenerating a shot.");
+      return;
+    }
+
+    try {
+      setRegeneratingShotId(shotId);
+      setError(null);
+      const result = await regenerateShot({
+        project_id: selectedProject.id,
+        storyboard_id: storyboardId,
+        shot_id: shotId,
+        revision_note: storyboardDraft.regeneration_note,
+      });
+      setStoryboardResult((current) =>
+        current
+          ? {
+              ...current,
+              shots: current.shots.map((shot) =>
+                shot.shot.id === result.shot.shot.id ? result.shot : shot,
+              ),
+            }
+          : current,
+      );
+      await refreshProjectState(selectedProject.id);
+      setAgentRuns((runs) => [
+        { run: result.agent_run, events: result.agent_events },
+        ...runs.filter((item) => item.run.id !== result.agent_run.id),
+      ]);
+      setActivityLog((entries) => [
+        ...entries,
+        `Regenerated shot ${result.shot.shot.shot_number}.`,
+      ]);
+    } catch (submitError) {
+      setError(formatError(submitError));
+    } finally {
+      setRegeneratingShotId(null);
+    }
+  }
+
   async function handleSaveSnapshot() {
     if (!selectedProject) {
       setError("Select a project before saving a snapshot.");
@@ -720,6 +863,9 @@ export default function App() {
             setReferenceAssetDraft((draft) => ({ ...draft, [field]: value }))
           }
           onResearchDraftChange={(field, value) => setResearchDraft((draft) => ({ ...draft, [field]: value }))}
+          onStoryboardDraftChange={(field, value) =>
+            setStoryboardDraft((draft) => ({ ...draft, [field]: value }))
+          }
           onSubmitBrand={submitBrand}
           onSubmitBriefUnderstanding={submitBriefUnderstanding}
           onSubmitMemory={submitMemory}
@@ -727,15 +873,24 @@ export default function App() {
           onSubmitProject={submitProject}
           onSubmitReferenceAsset={submitReferenceAsset}
           onSubmitResearchReport={submitResearchReport}
+          onSubmitStoryboard={submitStoryboardGeneration}
+          onUpdateShot={handleUpdateShot}
           onUpdateMemoryStatus={handleUpdateMemoryStatus}
+          onRegenerateShot={handleRegenerateShot}
           productUnderstandings={productUnderstandings}
           projectDraft={projectDraft}
           referenceAssetDraft={referenceAssetDraft}
           researchDraft={researchDraft}
           researchReports={researchReports}
           researchResult={researchResult}
+          regeneratingShotId={regeneratingShotId}
+          savingShotId={savingShotId}
           selectedBrand={selectedBrand}
           selectedProject={selectedProject}
+          storyboardDraft={storyboardDraft}
+          storyboardResult={storyboardResult}
+          storyboards={storyboards}
+          generatingStoryboard={generatingStoryboard}
           understandingResult={understandingResult}
           versions={versions}
         />

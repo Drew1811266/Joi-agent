@@ -5,6 +5,7 @@ import { EmptyState } from "./EmptyState";
 import { MemoryWorkspace, type MemoryCurationDraft } from "./MemoryWorkspace";
 import { MetricStrip } from "./MetricStrip";
 import { ResearchWorkspace, type ResearchDraft } from "./ResearchWorkspace";
+import { StoryboardWorkspace, type StoryboardDraft } from "./StoryboardWorkspace";
 import type {
   Asset,
   Brand,
@@ -17,6 +18,9 @@ import type {
   ProjectVersion,
   ResearchReport,
   ResearchReportResult,
+  ShotUpdateInput,
+  StoryboardGenerationResult,
+  StoryboardWithShots,
 } from "../types/joi";
 
 type ProjectWorkspaceProps = {
@@ -29,6 +33,7 @@ type ProjectWorkspaceProps = {
   briefDraft: BriefDraft;
   creativeDirections: CreativeDirection[];
   curatingMemory: boolean;
+  generatingStoryboard: boolean;
   generatingUnderstanding: boolean;
   generatingResearch: boolean;
   memoryCurationDraft: MemoryCurationDraft;
@@ -45,6 +50,8 @@ type ProjectWorkspaceProps = {
   onProjectDraftChange: (field: "title" | "advertising_goal" | "duration_seconds", value: string) => void;
   onReferenceAssetDraftChange: (field: keyof ReferenceAssetDraft, value: string) => void;
   onResearchDraftChange: (field: keyof ResearchDraft, value: string) => void;
+  onRegenerateShot: (storyboardId: string, shotId: string) => void;
+  onStoryboardDraftChange: (field: keyof StoryboardDraft, value: string) => void;
   onSubmitBrand: () => void;
   onSubmitBriefUnderstanding: () => void;
   onSubmitMemory: () => void;
@@ -52,7 +59,9 @@ type ProjectWorkspaceProps = {
   onSubmitProject: () => void;
   onSubmitReferenceAsset: () => void;
   onSubmitResearchReport: () => void;
+  onSubmitStoryboard: () => void;
   onUpdateMemoryStatus: (id: string, status: "accepted" | "rejected") => void;
+  onUpdateShot: (input: ShotUpdateInput) => void;
   productUnderstandings: ProductUnderstanding[];
   projectDraft: {
     title: string;
@@ -60,11 +69,16 @@ type ProjectWorkspaceProps = {
     duration_seconds: string;
   };
   referenceAssetDraft: ReferenceAssetDraft;
+  regeneratingShotId: string | null;
   researchDraft: ResearchDraft;
   researchReports: ResearchReport[];
   researchResult: ResearchReportResult | null;
+  savingShotId: string | null;
   selectedBrand: Brand | null;
   selectedProject: Project | null;
+  storyboardDraft: StoryboardDraft;
+  storyboardResult: StoryboardGenerationResult | null;
+  storyboards: StoryboardWithShots[];
   understandingResult: BriefUnderstandingResult | null;
   versions: ProjectVersion[];
 };
@@ -76,6 +90,7 @@ export function ProjectWorkspace({
   briefDraft,
   creativeDirections,
   curatingMemory,
+  generatingStoryboard,
   generatingUnderstanding,
   generatingResearch,
   memoryCurationDraft,
@@ -89,6 +104,8 @@ export function ProjectWorkspace({
   onProjectDraftChange,
   onReferenceAssetDraftChange,
   onResearchDraftChange,
+  onRegenerateShot,
+  onStoryboardDraftChange,
   onSubmitBrand,
   onSubmitBriefUnderstanding,
   onSubmitMemory,
@@ -96,15 +113,22 @@ export function ProjectWorkspace({
   onSubmitProject,
   onSubmitReferenceAsset,
   onSubmitResearchReport,
+  onSubmitStoryboard,
   onUpdateMemoryStatus,
+  onUpdateShot,
   productUnderstandings,
   projectDraft,
   referenceAssetDraft,
+  regeneratingShotId,
   researchDraft,
   researchReports,
   researchResult,
+  savingShotId,
   selectedBrand,
   selectedProject,
+  storyboardDraft,
+  storyboardResult,
+  storyboards,
   understandingResult,
   versions,
 }: ProjectWorkspaceProps) {
@@ -237,6 +261,21 @@ export function ProjectWorkspace({
           selectedProject={selectedProject}
         />
       ) : null}
+      {activeTab === "Storyboard" ? (
+        <StoryboardWorkspace
+          generatingStoryboard={generatingStoryboard}
+          onRegenerateShot={onRegenerateShot}
+          onStoryboardDraftChange={onStoryboardDraftChange}
+          onSubmitStoryboard={onSubmitStoryboard}
+          onUpdateShot={onUpdateShot}
+          regeneratingShotId={regeneratingShotId}
+          savingShotId={savingShotId}
+          selectedProject={selectedProject}
+          storyboardDraft={storyboardDraft}
+          storyboardResult={storyboardResult}
+          storyboards={storyboards}
+        />
+      ) : null}
       {activeTab === "Assets" ? <AssetsPanel assets={assets} /> : null}
       {activeTab === "Memory" ? (
         <MemoryWorkspace
@@ -254,7 +293,7 @@ export function ProjectWorkspace({
         />
       ) : null}
       {activeTab === "Versions" ? <VersionsPanel versions={versions} /> : null}
-      {!["Overview", "Brief", "Research", "Assets", "Memory", "Versions"].includes(activeTab) ? (
+      {!["Overview", "Brief", "Research", "Storyboard", "Assets", "Memory", "Versions"].includes(activeTab) ? (
         <EmptyState
           body="This workspace section is reserved for the next content workflow milestone."
           title={`${activeTab} workspace`}
