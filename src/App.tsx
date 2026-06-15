@@ -4,11 +4,15 @@ import {
   createBrand,
   createMemoryEntry,
   createProject,
+  createReferenceAsset,
   formatError,
+  generateBriefUnderstanding,
   healthCheck,
   listAssets,
   listBrands,
+  listCreativeDirections,
   listMemoryEntries,
+  listProductUnderstandings,
   listProjectVersions,
   listProjects,
   saveProjectSnapshot,
@@ -17,9 +21,20 @@ import {
 } from "./api/joiApi";
 import { AgentPanel } from "./components/AgentPanel";
 import { BrandProjectRail } from "./components/BrandProjectRail";
+import type { BriefDraft, ReferenceAssetDraft } from "./components/BriefWorkspace";
 import { ProjectWorkspace } from "./components/ProjectWorkspace";
 import { TopBar } from "./components/TopBar";
-import type { Asset, Brand, HealthResponse, MemoryEntry, Project, ProjectVersion } from "./types/joi";
+import type {
+  Asset,
+  Brand,
+  BriefUnderstandingResult,
+  CreativeDirection,
+  HealthResponse,
+  MemoryEntry,
+  ProductUnderstanding,
+  Project,
+  ProjectVersion,
+} from "./types/joi";
 
 type BrandDraft = {
   name: string;
@@ -55,6 +70,23 @@ const emptyMemoryDraft: MemoryDraft = {
   source: "user note",
 };
 
+const emptyBriefDraft: BriefDraft = {
+  brief_text: "",
+  product_name: "",
+  category: "",
+  audience: "",
+  target_platforms_text: "",
+  selling_points_text: "",
+  visual_direction: "",
+  constraints_text: "",
+};
+
+const emptyReferenceAssetDraft: ReferenceAssetDraft = {
+  kind: "link",
+  display_name: "",
+  source_uri: "",
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState("Overview");
   const [activityLog, setActivityLog] = useState<string[]>([]);
@@ -62,16 +94,23 @@ export default function App() {
   const [brandDraft, setBrandDraft] = useState<BrandDraft>(emptyBrandDraft);
   const [brandMode, setBrandMode] = useState<FormMode>("edit");
   const [brands, setBrands] = useState<Brand[]>([]);
+  const [briefDraft, setBriefDraft] = useState<BriefDraft>(emptyBriefDraft);
+  const [creativeDirections, setCreativeDirections] = useState<CreativeDirection[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [generatingUnderstanding, setGeneratingUnderstanding] = useState(false);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [memoryDraft, setMemoryDraft] = useState<MemoryDraft>(emptyMemoryDraft);
   const [memoryEntries, setMemoryEntries] = useState<MemoryEntry[]>([]);
+  const [productUnderstandings, setProductUnderstandings] = useState<ProductUnderstanding[]>([]);
   const [projectDraft, setProjectDraft] = useState<ProjectDraft>(emptyProjectDraft);
   const [projectMode, setProjectMode] = useState<FormMode>("edit");
   const [projects, setProjects] = useState<Project[]>([]);
+  const [referenceAssetDraft, setReferenceAssetDraft] =
+    useState<ReferenceAssetDraft>(emptyReferenceAssetDraft);
   const [savingSnapshot, setSavingSnapshot] = useState(false);
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [understandingResult, setUnderstandingResult] = useState<BriefUnderstandingResult | null>(null);
   const [versions, setVersions] = useState<ProjectVersion[]>([]);
 
   const selectedBrand = useMemo(
@@ -123,11 +162,19 @@ export default function App() {
         advertising_goal: selectedProject.advertising_goal,
         duration_seconds: String(selectedProject.duration_seconds),
       });
+      setBriefDraft(emptyBriefDraft);
+      setReferenceAssetDraft(emptyReferenceAssetDraft);
+      setUnderstandingResult(null);
       void refreshProjectState(selectedProject.id);
     } else {
       setProjectDraft(emptyProjectDraft);
+      setBriefDraft(emptyBriefDraft);
+      setReferenceAssetDraft(emptyReferenceAssetDraft);
+      setUnderstandingResult(null);
       setAssets([]);
+      setCreativeDirections([]);
       setMemoryEntries([]);
+      setProductUnderstandings([]);
       setVersions([]);
     }
   }, [selectedProject]);
@@ -168,14 +215,18 @@ export default function App() {
 
   async function refreshProjectState(projectId: string) {
     try {
-      const [assetList, versionList, projectMemory] = await Promise.all([
+      const [assetList, versionList, projectMemory, understandingList, directionList] = await Promise.all([
         listAssets(projectId),
         listProjectVersions(projectId),
         listMemoryEntries({ scope: "project", brand_id: null, project_id: projectId }),
+        listProductUnderstandings(projectId),
+        listCreativeDirections(projectId),
       ]);
       setAssets(assetList);
       setVersions(versionList);
       setMemoryEntries(projectMemory);
+      setProductUnderstandings(understandingList);
+      setCreativeDirections(directionList);
     } catch (loadError) {
       setError(formatError(loadError));
     }
@@ -190,7 +241,12 @@ export default function App() {
     setProjectDraft(emptyProjectDraft);
     setProjects([]);
     setAssets([]);
+    setBriefDraft(emptyBriefDraft);
+    setCreativeDirections([]);
     setMemoryEntries([]);
+    setProductUnderstandings([]);
+    setReferenceAssetDraft(emptyReferenceAssetDraft);
+    setUnderstandingResult(null);
     setVersions([]);
     setActiveTab("Overview");
     setActivityLog((entries) => [...entries, "Started a new brand draft."]);
@@ -201,7 +257,12 @@ export default function App() {
     setSelectedProjectId(null);
     setProjectDraft(emptyProjectDraft);
     setAssets([]);
+    setBriefDraft(emptyBriefDraft);
+    setCreativeDirections([]);
     setMemoryEntries([]);
+    setProductUnderstandings([]);
+    setReferenceAssetDraft(emptyReferenceAssetDraft);
+    setUnderstandingResult(null);
     setVersions([]);
     setActiveTab("Overview");
     setActivityLog((entries) => [...entries, "Started a new project draft."]);
@@ -312,6 +373,70 @@ export default function App() {
     }
   }
 
+  async function submitBriefUnderstanding() {
+    if (!selectedProject) {
+      setError("Select a project before generating understanding.");
+      return;
+    }
+
+    try {
+      setGeneratingUnderstanding(true);
+      setError(null);
+      const result = await generateBriefUnderstanding({
+        project_id: selectedProject.id,
+        brief_text: briefDraft.brief_text,
+        product_name: briefDraft.product_name,
+        category: briefDraft.category,
+        audience: briefDraft.audience,
+        target_platforms: splitListText(briefDraft.target_platforms_text),
+        selling_points_text: briefDraft.selling_points_text,
+        visual_direction: briefDraft.visual_direction,
+        constraints_text: briefDraft.constraints_text,
+        reference_asset_ids: assets.map((asset) => asset.id),
+      });
+      setUnderstandingResult(result);
+      await refreshProjectState(selectedProject.id);
+      setActivityLog((entries) => [
+        ...entries,
+        `Generated product understanding ${result.product_understanding.id}.`,
+      ]);
+    } catch (submitError) {
+      setError(formatError(submitError));
+    } finally {
+      setGeneratingUnderstanding(false);
+    }
+  }
+
+  async function submitReferenceAsset() {
+    if (!selectedProject) {
+      setError("Select a project before adding reference material.");
+      return;
+    }
+    if (!referenceAssetDraft.display_name.trim()) {
+      setError("Reference name is required.");
+      return;
+    }
+    if (!referenceAssetDraft.source_uri.trim()) {
+      setError("Reference URL is required.");
+      return;
+    }
+
+    try {
+      setError(null);
+      const asset = await createReferenceAsset({
+        project_id: selectedProject.id,
+        kind: referenceAssetDraft.kind || "link",
+        display_name: referenceAssetDraft.display_name,
+        source_uri: referenceAssetDraft.source_uri,
+      });
+      setReferenceAssetDraft(emptyReferenceAssetDraft);
+      await refreshProjectState(selectedProject.id);
+      setActivityLog((entries) => [...entries, `Added reference material ${asset.display_name}.`]);
+    } catch (submitError) {
+      setError(formatError(submitError));
+    }
+  }
+
   async function handleSaveSnapshot() {
     if (!selectedProject) {
       setError("Select a project before saving a snapshot.");
@@ -363,6 +488,10 @@ export default function App() {
           activeTab={activeTab}
           assets={assets}
           brandDraft={brandDraft}
+          briefDraft={briefDraft}
+          creativeDirections={creativeDirections}
+          generatingUnderstanding={generatingUnderstanding}
+          onBriefDraftChange={(field, value) => setBriefDraft((draft) => ({ ...draft, [field]: value }))}
           memoryDraft={memoryDraft}
           memoryEntries={memoryEntries}
           onBrandDraftChange={(field, value) => setBrandDraft((draft) => ({ ...draft, [field]: value }))}
@@ -373,12 +502,20 @@ export default function App() {
               [field]: value,
             }))
           }
+          onReferenceAssetDraftChange={(field, value) =>
+            setReferenceAssetDraft((draft) => ({ ...draft, [field]: value }))
+          }
           onSubmitBrand={submitBrand}
+          onSubmitBriefUnderstanding={submitBriefUnderstanding}
           onSubmitMemory={submitMemory}
           onSubmitProject={submitProject}
+          onSubmitReferenceAsset={submitReferenceAsset}
+          productUnderstandings={productUnderstandings}
           projectDraft={projectDraft}
+          referenceAssetDraft={referenceAssetDraft}
           selectedBrand={selectedBrand}
           selectedProject={selectedProject}
+          understandingResult={understandingResult}
           versions={versions}
         />
 
@@ -392,4 +529,11 @@ export default function App() {
       ) : null}
     </div>
   );
+}
+
+function splitListText(value: string): string[] {
+  return value
+    .split(/[\n,，;；]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 }

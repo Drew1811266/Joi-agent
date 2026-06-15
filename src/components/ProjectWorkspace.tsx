@@ -1,8 +1,18 @@
 import type { FormEvent } from "react";
 
+import { BriefWorkspace, type BriefDraft, type ReferenceAssetDraft } from "./BriefWorkspace";
 import { EmptyState } from "./EmptyState";
 import { MetricStrip } from "./MetricStrip";
-import type { Asset, Brand, MemoryEntry, Project, ProjectVersion } from "../types/joi";
+import type {
+  Asset,
+  Brand,
+  BriefUnderstandingResult,
+  CreativeDirection,
+  MemoryEntry,
+  ProductUnderstanding,
+  Project,
+  ProjectVersion,
+} from "../types/joi";
 
 type ProjectWorkspaceProps = {
   activeTab: string;
@@ -11,24 +21,34 @@ type ProjectWorkspaceProps = {
     name: string;
     description: string;
   };
+  briefDraft: BriefDraft;
+  creativeDirections: CreativeDirection[];
+  generatingUnderstanding: boolean;
   memoryDraft: {
     content: string;
     source: string;
   };
   memoryEntries: MemoryEntry[];
+  onBriefDraftChange: (field: keyof BriefDraft, value: string) => void;
   onBrandDraftChange: (field: "name" | "description", value: string) => void;
   onMemoryDraftChange: (field: "content" | "source", value: string) => void;
   onProjectDraftChange: (field: "title" | "advertising_goal" | "duration_seconds", value: string) => void;
+  onReferenceAssetDraftChange: (field: keyof ReferenceAssetDraft, value: string) => void;
   onSubmitBrand: () => void;
+  onSubmitBriefUnderstanding: () => void;
   onSubmitMemory: () => void;
   onSubmitProject: () => void;
+  onSubmitReferenceAsset: () => void;
+  productUnderstandings: ProductUnderstanding[];
   projectDraft: {
     title: string;
     advertising_goal: string;
     duration_seconds: string;
   };
+  referenceAssetDraft: ReferenceAssetDraft;
   selectedBrand: Brand | null;
   selectedProject: Project | null;
+  understandingResult: BriefUnderstandingResult | null;
   versions: ProjectVersion[];
 };
 
@@ -36,17 +56,27 @@ export function ProjectWorkspace({
   activeTab,
   assets,
   brandDraft,
+  briefDraft,
+  creativeDirections,
+  generatingUnderstanding,
   memoryDraft,
   memoryEntries,
+  onBriefDraftChange,
   onBrandDraftChange,
   onMemoryDraftChange,
   onProjectDraftChange,
+  onReferenceAssetDraftChange,
   onSubmitBrand,
+  onSubmitBriefUnderstanding,
   onSubmitMemory,
   onSubmitProject,
+  onSubmitReferenceAsset,
+  productUnderstandings,
   projectDraft,
+  referenceAssetDraft,
   selectedBrand,
   selectedProject,
+  understandingResult,
   versions,
 }: ProjectWorkspaceProps) {
   return (
@@ -151,6 +181,22 @@ export function ProjectWorkspace({
         </div>
       ) : null}
 
+      {activeTab === "Brief" ? (
+        <BriefWorkspace
+          assets={assets}
+          briefDraft={briefDraft}
+          creativeDirections={creativeDirections}
+          generatingUnderstanding={generatingUnderstanding}
+          onBriefDraftChange={onBriefDraftChange}
+          onReferenceAssetDraftChange={onReferenceAssetDraftChange}
+          onSubmitBriefUnderstanding={onSubmitBriefUnderstanding}
+          onSubmitReferenceAsset={onSubmitReferenceAsset}
+          productUnderstandings={productUnderstandings}
+          referenceAssetDraft={referenceAssetDraft}
+          selectedProject={selectedProject}
+          understandingResult={understandingResult}
+        />
+      ) : null}
       {activeTab === "Assets" ? <AssetsPanel assets={assets} /> : null}
       {activeTab === "Memory" ? (
         <MemoryPanel
@@ -162,7 +208,7 @@ export function ProjectWorkspace({
         />
       ) : null}
       {activeTab === "Versions" ? <VersionsPanel versions={versions} /> : null}
-      {!["Overview", "Assets", "Memory", "Versions"].includes(activeTab) ? (
+      {!["Overview", "Brief", "Assets", "Memory", "Versions"].includes(activeTab) ? (
         <EmptyState
           body="This workspace section is reserved for the next content workflow milestone."
           title={`${activeTab} workspace`}

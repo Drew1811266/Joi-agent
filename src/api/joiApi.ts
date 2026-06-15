@@ -2,9 +2,12 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type {
   Asset,
+  BriefUnderstandingInput,
+  BriefUnderstandingResult,
   Brand,
   BrandInput,
   BrandUpdateInput,
+  CreativeDirection,
   HealthResponse,
   MemoryEntry,
   MemoryEntryInput,
@@ -13,6 +16,8 @@ import type {
   ProjectInput,
   ProjectUpdateInput,
   ProjectVersion,
+  ProductUnderstanding,
+  ReferenceAssetInput,
   SnapshotInput,
 } from "../types/joi";
 
@@ -62,6 +67,10 @@ export function listAssets(projectId: string): Promise<Asset[]> {
   return invoke<Asset[]>("joi_list_assets", { project_id: projectId });
 }
 
+export function createReferenceAsset(input: ReferenceAssetInput): Promise<Asset> {
+  return invoke<Asset>("joi_create_reference_asset", { input });
+}
+
 export function listProjectVersions(projectId: string): Promise<ProjectVersion[]> {
   return invoke<ProjectVersion[]>("joi_list_project_versions", { project_id: projectId });
 }
@@ -76,4 +85,18 @@ export function createMemoryEntry(input: MemoryEntryInput): Promise<MemoryEntry>
 
 export function listMemoryEntries(input: MemoryListInput): Promise<MemoryEntry[]> {
   return invoke<MemoryEntry[]>("joi_list_memory_entries", { input });
+}
+
+export function generateBriefUnderstanding(
+  input: BriefUnderstandingInput,
+): Promise<BriefUnderstandingResult> {
+  return invoke<BriefUnderstandingResult>("joi_generate_brief_understanding", { input });
+}
+
+export function listProductUnderstandings(projectId: string): Promise<ProductUnderstanding[]> {
+  return invoke<ProductUnderstanding[]>("joi_list_product_understandings", { project_id: projectId });
+}
+
+export function listCreativeDirections(projectId: string): Promise<CreativeDirection[]> {
+  return invoke<CreativeDirection[]>("joi_list_creative_directions", { project_id: projectId });
 }

@@ -335,6 +335,66 @@ form {
   align-items: end;
 }
 
+.brief-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 320px);
+  gap: 14px;
+}
+
+.brief-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.brief-form button[type="submit"],
+.wide-field {
+  grid-column: 1 / -1;
+}
+
+.compact-data-list {
+  max-height: 280px;
+  overflow: auto;
+}
+
+.understanding-result,
+.tag-group,
+.question-list {
+  display: grid;
+  gap: 10px;
+}
+
+.result-list div {
+  align-items: start;
+}
+
+.result-list dd {
+  overflow-wrap: anywhere;
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag-list span {
+  border: 1px solid #b9cdc3;
+  border-radius: 999px;
+  background: #eef4ef;
+  color: #17483d;
+  font-size: 12px;
+  font-weight: 650;
+  padding: 5px 8px;
+}
+
+.question-list ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  color: #46514b;
+  font-size: 13px;
+}
+
 .workflow-map {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
@@ -422,7 +482,12 @@ form {
 
   .workspace-header,
   .workspace-grid,
+  .brief-layout,
   .inline-form {
+    grid-template-columns: 1fr;
+  }
+
+  .brief-form {
     grid-template-columns: 1fr;
   }
 

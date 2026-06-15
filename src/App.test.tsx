@@ -56,6 +56,8 @@ describe("Joi workspace shell", () => {
         case "joi_list_assets":
         case "joi_list_project_versions":
         case "joi_list_memory_entries":
+        case "joi_list_product_understandings":
+        case "joi_list_creative_directions":
           return Promise.resolve([]);
         case "joi_save_project_snapshot":
           return Promise.resolve({
@@ -111,6 +113,57 @@ describe("Joi workspace shell", () => {
             status: "draft",
             current_version_id: null,
             final_version_id: null,
+            created_at: "2026-06-15T00:00:00Z",
+            updated_at: "2026-06-15T00:00:00Z",
+          });
+        case "joi_generate_brief_understanding":
+          return Promise.resolve({
+            product_understanding: {
+              id: "understanding-1",
+              project_id: "project-1",
+              product_name: "Lightweight trench",
+              category: "outerwear",
+              audience: "urban commuters",
+              selling_points_json: ["water-resistant cotton", "soft structure"],
+              constraints_json: ["avoid heavy winter styling"],
+              notes: JSON.stringify({
+                format_version: "joi.product_understanding_notes.v1",
+                missing_questions: ["Which reference materials should Joi use as visual anchors?"],
+              }),
+              created_at: "2026-06-15T00:00:00Z",
+              updated_at: "2026-06-15T00:00:00Z",
+            },
+            creative_direction: {
+              id: "direction-1",
+              project_id: "project-1",
+              title: "Initial visual direction",
+              concept: "clean studio walk with close fabric texture",
+              tone: "user-defined",
+              visual_style: "clean studio walk with close fabric texture",
+              scene_direction: "",
+              rationale: "Generated from 0.12 brief and material understanding input.",
+              created_at: "2026-06-15T00:00:00Z",
+              updated_at: "2026-06-15T00:00:00Z",
+            },
+            brief_summary: "15 second outerwear launch ad",
+            brand_summary: "Atelier Joi: Editorial womenswear",
+            visual_direction: "clean studio walk with close fabric texture",
+            selling_points: ["water-resistant cotton", "soft structure"],
+            constraints: ["avoid heavy winter styling"],
+            missing_questions: ["Which reference materials should Joi use as visual anchors?"],
+          });
+        case "joi_create_reference_asset":
+          return Promise.resolve({
+            id: "asset-1",
+            project_id: "project-1",
+            kind: "link",
+            display_name: "Studio trench reference",
+            relative_path: "",
+            source_uri: "https://example.com/trench-look",
+            mime_type: "text/uri-list",
+            file_size_bytes: 0,
+            sha256: "",
+            metadata_json: {},
             created_at: "2026-06-15T00:00:00Z",
             updated_at: "2026-06-15T00:00:00Z",
           });
@@ -233,6 +286,104 @@ describe("Joi workspace shell", () => {
           title: "Lookbook Motion",
           advertising_goal: "Convert collection interest",
           duration_seconds: 30,
+        },
+      });
+    });
+  });
+
+  test("generates brief and material understanding from the Brief workspace", async () => {
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "Spring Drop Film" });
+    fireEvent.click(screen.getByRole("button", { name: "Brief" }));
+    fireEvent.change(screen.getByLabelText("Project brief"), {
+      target: { value: "15 second outerwear launch ad" },
+    });
+    fireEvent.change(screen.getByLabelText("Product name"), {
+      target: { value: "Lightweight trench" },
+    });
+    fireEvent.change(screen.getByLabelText("Product category"), {
+      target: { value: "outerwear" },
+    });
+    fireEvent.change(screen.getByLabelText("Audience"), {
+      target: { value: "urban commuters" },
+    });
+    fireEvent.change(screen.getByLabelText("Target platforms"), {
+      target: { value: "jimeng_video, grok_video" },
+    });
+    fireEvent.change(screen.getByLabelText("Selling points"), {
+      target: { value: "water-resistant cotton, soft structure" },
+    });
+    fireEvent.change(screen.getByLabelText("Visual direction"), {
+      target: { value: "clean studio walk with close fabric texture" },
+    });
+    fireEvent.change(screen.getByLabelText("Constraints"), {
+      target: { value: "avoid heavy winter styling" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /generate understanding/i }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("joi_generate_brief_understanding", {
+        input: {
+          project_id: "project-1",
+          brief_text: "15 second outerwear launch ad",
+          product_name: "Lightweight trench",
+          category: "outerwear",
+          audience: "urban commuters",
+          target_platforms: ["jimeng_video", "grok_video"],
+          selling_points_text: "water-resistant cotton, soft structure",
+          visual_direction: "clean studio walk with close fabric texture",
+          constraints_text: "avoid heavy winter styling",
+          reference_asset_ids: [],
+        },
+      });
+    });
+    expect(
+      await screen.findByText("Which reference materials should Joi use as visual anchors?"),
+    ).toBeInTheDocument();
+  });
+
+  test("keeps reference material submission disabled until required fields are filled", async () => {
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "Spring Drop Film" });
+    fireEvent.click(screen.getByRole("button", { name: "Brief" }));
+
+    const addReference = screen.getByRole("button", { name: /add reference/i });
+    expect(addReference).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Reference name"), {
+      target: { value: "Studio trench reference" },
+    });
+    expect(addReference).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Reference URL"), {
+      target: { value: "https://example.com/trench-look" },
+    });
+    expect(addReference).toBeEnabled();
+  });
+
+  test("creates link reference material from the Brief workspace", async () => {
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "Spring Drop Film" });
+    fireEvent.click(screen.getByRole("button", { name: "Brief" }));
+
+    fireEvent.change(screen.getByLabelText("Reference name"), {
+      target: { value: "Studio trench reference" },
+    });
+    fireEvent.change(screen.getByLabelText("Reference URL"), {
+      target: { value: "https://example.com/trench-look" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /add reference/i }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("joi_create_reference_asset", {
+        input: {
+          project_id: "project-1",
+          kind: "link",
+          display_name: "Studio trench reference",
+          source_uri: "https://example.com/trench-look",
         },
       });
     });
