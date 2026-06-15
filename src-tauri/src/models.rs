@@ -230,6 +230,18 @@ pub struct DeliveryReport {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QualityReview {
+    pub id: String,
+    pub project_id: String,
+    pub summary: String,
+    pub score: i64,
+    pub checklist_json: Value,
+    pub suggestions_json: Value,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectVersion {
     pub id: String,
     pub project_id: String,

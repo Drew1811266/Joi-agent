@@ -253,6 +253,19 @@ CREATE TABLE IF NOT EXISTS delivery_reports (
   CHECK (is_final_candidate IN (0, 1))
 );
 
+CREATE TABLE IF NOT EXISTS quality_reviews (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  score INTEGER NOT NULL DEFAULT 0,
+  checklist_json TEXT NOT NULL DEFAULT '[]',
+  suggestions_json TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  CHECK (score BETWEEN 0 AND 100)
+);
+
 CREATE TABLE IF NOT EXISTS project_versions (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
@@ -358,6 +371,7 @@ CREATE INDEX IF NOT EXISTS idx_shots_storyboard_id ON shots(storyboard_id);
 CREATE INDEX IF NOT EXISTS idx_prompt_packages_project_id ON prompt_packages(project_id);
 CREATE INDEX IF NOT EXISTS idx_prompt_packages_shot_id ON prompt_packages(shot_id);
 CREATE INDEX IF NOT EXISTS idx_delivery_reports_project_id ON delivery_reports(project_id);
+CREATE INDEX IF NOT EXISTS idx_quality_reviews_project_id ON quality_reviews(project_id);
 CREATE INDEX IF NOT EXISTS idx_project_versions_project_id ON project_versions(project_id);
 CREATE INDEX IF NOT EXISTS idx_memory_entries_scope ON memory_entries(scope);
 CREATE INDEX IF NOT EXISTS idx_memory_entries_brand_id ON memory_entries(brand_id);

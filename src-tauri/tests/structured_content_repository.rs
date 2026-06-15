@@ -6,7 +6,8 @@ use joi_agent_lib::error::JoiError;
 use joi_agent_lib::repositories::{
     BrandCreate, CreativeDirectionCreate, DeliveryReportCreate, DeliveryReportUpdate,
     ProductUnderstandingCreate, ProjectCreate, PromptPackageCreate, PromptPackageUpdate,
-    Repository, ResearchReportCreate, ShotCreate, ShotPlanCreate, ShotUpdate, StoryboardCreate,
+    QualityReviewCreate, Repository, ResearchReportCreate, ShotCreate, ShotPlanCreate, ShotUpdate,
+    StoryboardCreate,
 };
 use serde_json::json;
 
@@ -352,6 +353,81 @@ fn creates_lists_and_updates_delivery_reports() {
     assert_eq!(updated.markdown, "# Edited Report");
     assert!(updated.is_final_candidate);
     assert_eq!(updated.sections_json["sections"][0]["id"], "project_brief");
+}
+
+#[test]
+fn repository_creates_lists_and_updates_quality_review_suggestions() {
+    let app = TestApp::new();
+    let db = Database::open(&app.db_path).expect("open database");
+    db.migrate().expect("migrate");
+    let (repo, project_id) = seeded_repo(&db);
+
+    let review = repo
+        .create_quality_review(QualityReviewCreate {
+            project_id: project_id.clone(),
+            summary: "Quality review scored 82/100 with 1 failed check(s), 2 warning(s), and 1 pending suggestion(s).".to_string(),
+            score: 82,
+            checklist_json: json!([
+                {
+                    "id": "duration-storyboard-1",
+                    "category": "storyboard_duration",
+                    "title": "Storyboard duration matches target",
+                    "status": "failed",
+                    "severity": "high",
+                    "source_type": "storyboard",
+                    "source_id": "storyboard-1",
+                    "message": "Storyboard totals 18s while project target is 15s.",
+                    "evidence": ["Story target: 15s", "Shot total: 18s"],
+                    "suggestion_ids": []
+                }
+            ]),
+            suggestions_json: json!([
+                {
+                    "id": "suggest-shot-shot-1-description",
+                    "target_type": "shot",
+                    "target_id": "shot-1",
+                    "field": "description",
+                    "current_value": "Model walks forward.",
+                    "suggested_value": "Model walks forward while the trench texture stays visible.",
+                    "rationale": "Expose the product benefit.",
+                    "status": "pending",
+                    "check_ids": ["garment-shot-1"]
+                }
+            ]),
+        })
+        .expect("quality review");
+
+    assert_eq!(review.project_id, project_id);
+    assert_eq!(review.score, 82);
+    assert_eq!(review.checklist_json[0]["category"], "storyboard_duration");
+
+    let listed = repo
+        .list_quality_reviews(&project_id)
+        .expect("quality reviews");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, review.id);
+
+    let updated = repo
+        .update_quality_review_suggestions(
+            &review.id,
+            json!([
+                {
+                    "id": "suggest-shot-shot-1-description",
+                    "target_type": "shot",
+                    "target_id": "shot-1",
+                    "field": "description",
+                    "current_value": "Model walks forward.",
+                    "suggested_value": "Model walks forward while the trench texture stays visible.",
+                    "rationale": "Expose the product benefit.",
+                    "status": "applied",
+                    "check_ids": ["garment-shot-1"]
+                }
+            ]),
+        )
+        .expect("updated suggestions");
+
+    assert_eq!(updated.suggestions_json[0]["status"], "applied");
+    assert!(updated.updated_at >= review.updated_at);
 }
 
 #[test]

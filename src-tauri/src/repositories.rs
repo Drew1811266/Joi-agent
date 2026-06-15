@@ -6,7 +6,7 @@ use crate::error::{JoiError, JoiResult};
 use crate::models::{
     new_id, AgentRun, AgentRunEvent, Asset, AssetKind, Brand, CreativeDirection, DeliveryReport,
     MemoryEntry, MemoryScope, MemoryStatus, ProductUnderstanding, Project, ProjectVersion,
-    PromptModality, PromptPackage, PromptPlatform, ResearchReport, Shot, Storyboard,
+    PromptModality, PromptPackage, PromptPlatform, QualityReview, ResearchReport, Shot, Storyboard,
 };
 use crate::validation::{validate_non_negative, validate_prompt_modality, validate_required_text};
 
@@ -177,6 +177,15 @@ pub struct DeliveryReportUpdate {
     pub markdown: String,
     pub sections_json: Value,
     pub is_final_candidate: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct QualityReviewCreate {
+    pub project_id: String,
+    pub summary: String,
+    pub score: i64,
+    pub checklist_json: Value,
+    pub suggestions_json: Value,
 }
 
 #[derive(Debug, Clone)]
@@ -1029,6 +1038,80 @@ impl<'a> Repository<'a> {
         self.get_delivery_report(&input.id)
     }
 
+    pub fn create_quality_review(&self, input: QualityReviewCreate) -> JoiResult<QualityReview> {
+        self.get_project(&input.project_id)?;
+        validate_required_text("Quality review summary", &input.summary)?;
+        if !(0..=100).contains(&input.score) {
+            return Err(JoiError::Validation(
+                "Quality review score must be between 0 and 100".to_string(),
+            ));
+        }
+
+        let now = Utc::now();
+        let review = QualityReview {
+            id: new_id(),
+            project_id: input.project_id,
+            summary: input.summary.trim().to_string(),
+            score: input.score,
+            checklist_json: input.checklist_json,
+            suggestions_json: input.suggestions_json,
+            created_at: now,
+            updated_at: now,
+        };
+        self.connection.execute(
+            "INSERT INTO quality_reviews (
+                id, project_id, summary, score, checklist_json, suggestions_json,
+                created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                review.id,
+                review.project_id,
+                review.summary,
+                review.score,
+                review.checklist_json.to_string(),
+                review.suggestions_json.to_string(),
+                review.created_at.to_rfc3339(),
+                review.updated_at.to_rfc3339()
+            ],
+        )?;
+        Ok(review)
+    }
+
+    pub fn get_quality_review(&self, id: &str) -> JoiResult<QualityReview> {
+        self.connection
+            .query_row(
+                "SELECT id, project_id, summary, score, checklist_json, suggestions_json,
+                        created_at, updated_at
+                 FROM quality_reviews WHERE id = ?1",
+                params![id],
+                map_quality_review,
+            )
+            .map_err(|err| match err {
+                rusqlite::Error::QueryReturnedNoRows => {
+                    JoiError::NotFound(format!("quality review {}", id))
+                }
+                other => other.into(),
+            })
+    }
+
+    pub fn update_quality_review_suggestions(
+        &self,
+        id: &str,
+        suggestions_json: Value,
+    ) -> JoiResult<QualityReview> {
+        let now = Utc::now();
+        let affected = self.connection.execute(
+            "UPDATE quality_reviews
+             SET suggestions_json = ?1, updated_at = ?2
+             WHERE id = ?3",
+            params![suggestions_json.to_string(), now.to_rfc3339(), id],
+        )?;
+        if affected == 0 {
+            return Err(JoiError::NotFound(format!("quality review {}", id)));
+        }
+        self.get_quality_review(id)
+    }
+
     pub fn create_memory_entry(&self, input: MemoryEntryCreate) -> JoiResult<MemoryEntry> {
         let scope = MemoryScope::try_from(input.scope.as_str())?;
         validate_required_text("Memory content", &input.content)?;
@@ -1366,6 +1449,16 @@ impl<'a> Repository<'a> {
         collect_rows(rows)
     }
 
+    pub fn list_quality_reviews(&self, project_id: &str) -> JoiResult<Vec<QualityReview>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, project_id, summary, score, checklist_json, suggestions_json,
+                    created_at, updated_at
+             FROM quality_reviews WHERE project_id = ?1 ORDER BY created_at ASC",
+        )?;
+        let rows = statement.query_map(params![project_id], map_quality_review)?;
+        collect_rows(rows)
+    }
+
     pub fn list_assets(&self, project_id: &str) -> JoiResult<Vec<Asset>> {
         let mut statement = self.connection.prepare(
             "SELECT id, project_id, kind, display_name, relative_path, source_uri, mime_type,
@@ -1656,6 +1749,19 @@ fn map_delivery_report(row: &rusqlite::Row<'_>) -> rusqlite::Result<DeliveryRepo
         markdown: row.get(3)?,
         sections_json: parse_json(row.get(4)?, 4)?,
         is_final_candidate: parse_bool(row.get(5)?, 5)?,
+        created_at: parse_time(row.get(6)?, 6)?,
+        updated_at: parse_time(row.get(7)?, 7)?,
+    })
+}
+
+fn map_quality_review(row: &rusqlite::Row<'_>) -> rusqlite::Result<QualityReview> {
+    Ok(QualityReview {
+        id: row.get(0)?,
+        project_id: row.get(1)?,
+        summary: row.get(2)?,
+        score: row.get(3)?,
+        checklist_json: parse_json(row.get(4)?, 4)?,
+        suggestions_json: parse_json(row.get(5)?, 5)?,
         created_at: parse_time(row.get(6)?, 6)?,
         updated_at: parse_time(row.get(7)?, 7)?,
     })
