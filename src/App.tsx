@@ -7,6 +7,7 @@ import {
   createReferenceAsset,
   formatError,
   generateBriefUnderstanding,
+  generateResearchReport,
   getAgentRuntimeStatus,
   healthCheck,
   listAgentRuns,
@@ -17,6 +18,7 @@ import {
   listProductUnderstandings,
   listProjectVersions,
   listProjects,
+  listResearchReports,
   saveProjectSnapshot,
   startAgentPlan,
   updateBrand,
@@ -26,6 +28,7 @@ import { AgentPanel } from "./components/AgentPanel";
 import { BrandProjectRail } from "./components/BrandProjectRail";
 import type { BriefDraft, ReferenceAssetDraft } from "./components/BriefWorkspace";
 import { ProjectWorkspace } from "./components/ProjectWorkspace";
+import { researchSourceFromDraft, type ResearchDraft } from "./components/ResearchWorkspace";
 import { TopBar } from "./components/TopBar";
 import type {
   AgentRunWithEvents,
@@ -39,6 +42,8 @@ import type {
   ProductUnderstanding,
   Project,
   ProjectVersion,
+  ResearchReport,
+  ResearchReportResult,
 } from "./types/joi";
 
 type BrandDraft = {
@@ -92,6 +97,16 @@ const emptyReferenceAssetDraft: ReferenceAssetDraft = {
   source_uri: "",
 };
 
+const emptyResearchDraft: ResearchDraft = {
+  research_goal: "",
+  market_focus: "",
+  platform_focus_text: "",
+  source_title: "",
+  source_url: "",
+  source_type: "reference",
+  source_excerpt: "",
+};
+
 const defaultAgentGoal = "Plan the next content workflow steps for this project";
 
 export default function App() {
@@ -108,6 +123,7 @@ export default function App() {
   const [creativeDirections, setCreativeDirections] = useState<CreativeDirection[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [generatingUnderstanding, setGeneratingUnderstanding] = useState(false);
+  const [generatingResearch, setGeneratingResearch] = useState(false);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [memoryDraft, setMemoryDraft] = useState<MemoryDraft>(emptyMemoryDraft);
   const [memoryEntries, setMemoryEntries] = useState<MemoryEntry[]>([]);
@@ -117,6 +133,9 @@ export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [referenceAssetDraft, setReferenceAssetDraft] =
     useState<ReferenceAssetDraft>(emptyReferenceAssetDraft);
+  const [researchDraft, setResearchDraft] = useState<ResearchDraft>(emptyResearchDraft);
+  const [researchReports, setResearchReports] = useState<ResearchReport[]>([]);
+  const [researchResult, setResearchResult] = useState<ResearchReportResult | null>(null);
   const [savingSnapshot, setSavingSnapshot] = useState(false);
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -177,12 +196,17 @@ export default function App() {
       });
       setBriefDraft(emptyBriefDraft);
       setReferenceAssetDraft(emptyReferenceAssetDraft);
+      setResearchDraft(emptyResearchDraft);
+      setResearchResult(null);
       setUnderstandingResult(null);
       void refreshProjectState(selectedProject.id);
     } else {
       setProjectDraft(emptyProjectDraft);
       setBriefDraft(emptyBriefDraft);
       setReferenceAssetDraft(emptyReferenceAssetDraft);
+      setResearchDraft(emptyResearchDraft);
+      setResearchReports([]);
+      setResearchResult(null);
       setUnderstandingResult(null);
       setAssets([]);
       setAgentRuns([]);
@@ -234,12 +258,21 @@ export default function App() {
 
   async function refreshProjectState(projectId: string) {
     try {
-      const [assetList, versionList, projectMemory, understandingList, directionList, runList] = await Promise.all([
+      const [
+        assetList,
+        versionList,
+        projectMemory,
+        understandingList,
+        directionList,
+        reportList,
+        runList,
+      ] = await Promise.all([
         listAssets(projectId),
         listProjectVersions(projectId),
         listMemoryEntries({ scope: "project", brand_id: null, project_id: projectId }),
         listProductUnderstandings(projectId),
         listCreativeDirections(projectId),
+        listResearchReports(projectId),
         listAgentRuns(projectId),
       ]);
       setAssets(assetList);
@@ -247,6 +280,7 @@ export default function App() {
       setMemoryEntries(projectMemory);
       setProductUnderstandings(understandingList);
       setCreativeDirections(directionList);
+      setResearchReports(reportList);
       setAgentRuns(runList);
     } catch (loadError) {
       setError(formatError(loadError));
@@ -268,6 +302,9 @@ export default function App() {
     setMemoryEntries([]);
     setProductUnderstandings([]);
     setReferenceAssetDraft(emptyReferenceAssetDraft);
+    setResearchDraft(emptyResearchDraft);
+    setResearchReports([]);
+    setResearchResult(null);
     setUnderstandingResult(null);
     setVersions([]);
     setActiveTab("Overview");
@@ -285,6 +322,9 @@ export default function App() {
     setMemoryEntries([]);
     setProductUnderstandings([]);
     setReferenceAssetDraft(emptyReferenceAssetDraft);
+    setResearchDraft(emptyResearchDraft);
+    setResearchReports([]);
+    setResearchResult(null);
     setUnderstandingResult(null);
     setVersions([]);
     setActiveTab("Overview");
@@ -460,6 +500,44 @@ export default function App() {
     }
   }
 
+  async function submitResearchReport() {
+    if (!selectedProject) {
+      setError("Select a project before generating research.");
+      return;
+    }
+    if (!researchDraft.research_goal.trim()) {
+      setError("Research goal is required.");
+      return;
+    }
+    if (!researchDraft.source_title.trim() || !researchDraft.source_excerpt.trim()) {
+      setError("Source title and excerpt are required.");
+      return;
+    }
+
+    try {
+      setGeneratingResearch(true);
+      setError(null);
+      const result = await generateResearchReport({
+        project_id: selectedProject.id,
+        research_goal: researchDraft.research_goal,
+        market_focus: researchDraft.market_focus,
+        platform_focus: splitListText(researchDraft.platform_focus_text),
+        source_materials: [researchSourceFromDraft(researchDraft)],
+      });
+      setResearchResult(result);
+      await refreshProjectState(selectedProject.id);
+      setAgentRuns((runs) => [
+        { run: result.agent_run, events: result.agent_events },
+        ...runs.filter((item) => item.run.id !== result.agent_run.id),
+      ]);
+      setActivityLog((entries) => [...entries, `Generated research report ${result.report.id}.`]);
+    } catch (submitError) {
+      setError(formatError(submitError));
+    } finally {
+      setGeneratingResearch(false);
+    }
+  }
+
   async function handleSaveSnapshot() {
     if (!selectedProject) {
       setError("Select a project before saving a snapshot.");
@@ -541,6 +619,7 @@ export default function App() {
           briefDraft={briefDraft}
           creativeDirections={creativeDirections}
           generatingUnderstanding={generatingUnderstanding}
+          generatingResearch={generatingResearch}
           onBriefDraftChange={(field, value) => setBriefDraft((draft) => ({ ...draft, [field]: value }))}
           memoryDraft={memoryDraft}
           memoryEntries={memoryEntries}
@@ -555,14 +634,19 @@ export default function App() {
           onReferenceAssetDraftChange={(field, value) =>
             setReferenceAssetDraft((draft) => ({ ...draft, [field]: value }))
           }
+          onResearchDraftChange={(field, value) => setResearchDraft((draft) => ({ ...draft, [field]: value }))}
           onSubmitBrand={submitBrand}
           onSubmitBriefUnderstanding={submitBriefUnderstanding}
           onSubmitMemory={submitMemory}
           onSubmitProject={submitProject}
           onSubmitReferenceAsset={submitReferenceAsset}
+          onSubmitResearchReport={submitResearchReport}
           productUnderstandings={productUnderstandings}
           projectDraft={projectDraft}
           referenceAssetDraft={referenceAssetDraft}
+          researchDraft={researchDraft}
+          researchReports={researchReports}
+          researchResult={researchResult}
           selectedBrand={selectedBrand}
           selectedProject={selectedProject}
           understandingResult={understandingResult}

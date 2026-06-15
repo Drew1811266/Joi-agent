@@ -22,6 +22,9 @@ import type {
   ProjectVersion,
   ProductUnderstanding,
   ReferenceAssetInput,
+  ResearchReport,
+  ResearchReportInput,
+  ResearchReportResult,
   SnapshotInput,
 } from "../types/joi";
 
@@ -103,6 +106,14 @@ export function listProductUnderstandings(projectId: string): Promise<ProductUnd
 
 export function listCreativeDirections(projectId: string): Promise<CreativeDirection[]> {
   return invoke<CreativeDirection[]>("joi_list_creative_directions", { project_id: projectId });
+}
+
+export function generateResearchReport(input: ResearchReportInput): Promise<ResearchReportResult> {
+  return invoke<ResearchReportResult>("joi_generate_research_report", { input });
+}
+
+export function listResearchReports(projectId: string): Promise<ResearchReport[]> {
+  return invoke<ResearchReport[]>("joi_list_research_reports", { project_id: projectId });
 }
 
 export function getAgentRuntimeStatus(): Promise<AgentRuntimeStatus> {

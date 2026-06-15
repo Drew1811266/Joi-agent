@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { BriefWorkspace, type BriefDraft, type ReferenceAssetDraft } from "./BriefWorkspace";
 import { EmptyState } from "./EmptyState";
 import { MetricStrip } from "./MetricStrip";
+import { ResearchWorkspace, type ResearchDraft } from "./ResearchWorkspace";
 import type {
   Asset,
   Brand,
@@ -12,6 +13,8 @@ import type {
   ProductUnderstanding,
   Project,
   ProjectVersion,
+  ResearchReport,
+  ResearchReportResult,
 } from "../types/joi";
 
 type ProjectWorkspaceProps = {
@@ -24,6 +27,7 @@ type ProjectWorkspaceProps = {
   briefDraft: BriefDraft;
   creativeDirections: CreativeDirection[];
   generatingUnderstanding: boolean;
+  generatingResearch: boolean;
   memoryDraft: {
     content: string;
     source: string;
@@ -34,11 +38,13 @@ type ProjectWorkspaceProps = {
   onMemoryDraftChange: (field: "content" | "source", value: string) => void;
   onProjectDraftChange: (field: "title" | "advertising_goal" | "duration_seconds", value: string) => void;
   onReferenceAssetDraftChange: (field: keyof ReferenceAssetDraft, value: string) => void;
+  onResearchDraftChange: (field: keyof ResearchDraft, value: string) => void;
   onSubmitBrand: () => void;
   onSubmitBriefUnderstanding: () => void;
   onSubmitMemory: () => void;
   onSubmitProject: () => void;
   onSubmitReferenceAsset: () => void;
+  onSubmitResearchReport: () => void;
   productUnderstandings: ProductUnderstanding[];
   projectDraft: {
     title: string;
@@ -46,6 +52,9 @@ type ProjectWorkspaceProps = {
     duration_seconds: string;
   };
   referenceAssetDraft: ReferenceAssetDraft;
+  researchDraft: ResearchDraft;
+  researchReports: ResearchReport[];
+  researchResult: ResearchReportResult | null;
   selectedBrand: Brand | null;
   selectedProject: Project | null;
   understandingResult: BriefUnderstandingResult | null;
@@ -59,6 +68,7 @@ export function ProjectWorkspace({
   briefDraft,
   creativeDirections,
   generatingUnderstanding,
+  generatingResearch,
   memoryDraft,
   memoryEntries,
   onBriefDraftChange,
@@ -66,14 +76,19 @@ export function ProjectWorkspace({
   onMemoryDraftChange,
   onProjectDraftChange,
   onReferenceAssetDraftChange,
+  onResearchDraftChange,
   onSubmitBrand,
   onSubmitBriefUnderstanding,
   onSubmitMemory,
   onSubmitProject,
   onSubmitReferenceAsset,
+  onSubmitResearchReport,
   productUnderstandings,
   projectDraft,
   referenceAssetDraft,
+  researchDraft,
+  researchReports,
+  researchResult,
   selectedBrand,
   selectedProject,
   understandingResult,
@@ -197,6 +212,17 @@ export function ProjectWorkspace({
           understandingResult={understandingResult}
         />
       ) : null}
+      {activeTab === "Research" ? (
+        <ResearchWorkspace
+          generatingResearch={generatingResearch}
+          onResearchDraftChange={onResearchDraftChange}
+          onSubmitResearchReport={onSubmitResearchReport}
+          researchDraft={researchDraft}
+          researchReports={researchReports}
+          researchResult={researchResult}
+          selectedProject={selectedProject}
+        />
+      ) : null}
       {activeTab === "Assets" ? <AssetsPanel assets={assets} /> : null}
       {activeTab === "Memory" ? (
         <MemoryPanel
@@ -208,7 +234,7 @@ export function ProjectWorkspace({
         />
       ) : null}
       {activeTab === "Versions" ? <VersionsPanel versions={versions} /> : null}
-      {!["Overview", "Brief", "Assets", "Memory", "Versions"].includes(activeTab) ? (
+      {!["Overview", "Brief", "Research", "Assets", "Memory", "Versions"].includes(activeTab) ? (
         <EmptyState
           body="This workspace section is reserved for the next content workflow milestone."
           title={`${activeTab} workspace`}

@@ -58,6 +58,7 @@ describe("Joi workspace shell", () => {
         case "joi_list_memory_entries":
         case "joi_list_product_understandings":
         case "joi_list_creative_directions":
+        case "joi_list_research_reports":
           return Promise.resolve([]);
         case "joi_get_agent_runtime_status":
           return Promise.resolve({
@@ -215,6 +216,53 @@ describe("Joi workspace shell", () => {
             metadata_json: {},
             created_at: "2026-06-15T00:00:00Z",
             updated_at: "2026-06-15T00:00:00Z",
+          });
+        case "joi_generate_research_report":
+          return Promise.resolve({
+            report: {
+              id: "research-1",
+              project_id: "project-1",
+              summary: "Research for Spring Drop Film: 1 source-backed finding.",
+              findings_json: [],
+              sources_json: [],
+              created_at: "2026-06-15T00:00:00Z",
+              updated_at: "2026-06-15T00:00:00Z",
+            },
+            findings: [
+              {
+                title: "Texture proof point",
+                insight: "Texture details support premium positioning.",
+                evidence: "Texture details support premium positioning.",
+                source_index: 1,
+                creative_implication: "Use tactile close-ups as visual proof before the model movement.",
+              },
+            ],
+            sources: [
+              {
+                index: 1,
+                title: "Reference note",
+                url: "https://example.com/reference",
+                source_type: "reference",
+                excerpt: "Texture details support premium positioning.",
+              },
+            ],
+            rationale: "Research for Spring Drop Film uses 1 source material.",
+            creative_implications: ["Use tactile close-ups as visual proof before the model movement."],
+            agent_run: {
+              id: "run-research-1",
+              project_id: "project-1",
+              user_goal: "Find reference angles",
+              status: "completed",
+              runtime_kind: "hermes_core",
+              runtime_mode: "local_research_bridge",
+              runtime_version: "0.16.0",
+              roles_json: ["researcher", "planner", "reviewer"],
+              plan_json: [],
+              result_summary: "Research for Spring Drop Film: 1 source-backed finding.",
+              created_at: "2026-06-15T00:00:00Z",
+              updated_at: "2026-06-15T00:00:00Z",
+            },
+            agent_events: [],
           });
         default:
           return Promise.resolve(null);
@@ -437,6 +485,52 @@ describe("Joi workspace shell", () => {
         },
       });
     });
+  });
+
+  test("generates a research report from the Research workspace", async () => {
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "Spring Drop Film" });
+    fireEvent.click(screen.getByRole("button", { name: "Research" }));
+    fireEvent.change(screen.getByLabelText("Research goal"), {
+      target: { value: "Find reference angles" },
+    });
+    fireEvent.change(screen.getByLabelText("Market focus"), {
+      target: { value: "outerwear" },
+    });
+    fireEvent.change(screen.getByLabelText("Platform focus"), {
+      target: { value: "jimeng_video, grok_video" },
+    });
+    fireEvent.change(screen.getByLabelText("Source title"), {
+      target: { value: "Reference note" },
+    });
+    fireEvent.change(screen.getByLabelText("Source URL"), {
+      target: { value: "https://example.com/reference" },
+    });
+    fireEvent.change(screen.getByLabelText("Source excerpt"), {
+      target: { value: "Texture details support premium positioning." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /generate research report/i }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("joi_generate_research_report", {
+        input: {
+          project_id: "project-1",
+          research_goal: "Find reference angles",
+          market_focus: "outerwear",
+          platform_focus: ["jimeng_video", "grok_video"],
+          source_materials: [
+            {
+              title: "Reference note",
+              url: "https://example.com/reference",
+              source_type: "reference",
+              excerpt: "Texture details support premium positioning.",
+            },
+          ],
+        },
+      });
+    });
+    expect(await screen.findByText("Texture proof point")).toBeInTheDocument();
   });
 
   test("starts an agent plan from the Agent panel", async () => {

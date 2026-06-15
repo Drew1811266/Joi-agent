@@ -74,6 +74,16 @@ export type CreativeDirection = {
   updated_at: string;
 };
 
+export type ResearchReport = {
+  id: string;
+  project_id: string;
+  summary: string;
+  findings_json: unknown;
+  sources_json: unknown;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ProjectVersion = {
   id: string;
   project_id: string;
@@ -176,6 +186,37 @@ export type ReferenceAssetInput = {
   source_uri: string;
 };
 
+export type ResearchSourceInput = {
+  title: string;
+  url: string;
+  source_type: string;
+  excerpt: string;
+};
+
+export type ResearchReportInput = {
+  project_id: string;
+  research_goal: string;
+  market_focus: string;
+  platform_focus: string[];
+  source_materials: ResearchSourceInput[];
+};
+
+export type ResearchFinding = {
+  title: string;
+  insight: string;
+  evidence: string;
+  source_index: number;
+  creative_implication: string;
+};
+
+export type ResearchSourceCitation = {
+  index: number;
+  title: string;
+  url: string;
+  source_type: string;
+  excerpt: string;
+};
+
 export type AgentRuntimeStatus = {
   runtime_kind: string;
   runtime_mode: string;
@@ -226,4 +267,14 @@ export type AgentPlanResult = {
 export type AgentRunWithEvents = {
   run: AgentRun;
   events: AgentRunEvent[];
+};
+
+export type ResearchReportResult = {
+  report: ResearchReport;
+  findings: ResearchFinding[];
+  sources: ResearchSourceCitation[];
+  rationale: string;
+  creative_implications: string[];
+  agent_run: AgentRun;
+  agent_events: AgentRunEvent[];
 };
