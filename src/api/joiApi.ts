@@ -13,9 +13,12 @@ import type {
   BrandUpdateInput,
   CreativeDirection,
   HealthResponse,
+  MemoryCurationInput,
+  MemoryCurationResult,
   MemoryEntry,
   MemoryEntryInput,
   MemoryListInput,
+  MemoryStatusInput,
   Project,
   ProjectInput,
   ProjectUpdateInput,
@@ -92,6 +95,14 @@ export function createMemoryEntry(input: MemoryEntryInput): Promise<MemoryEntry>
 
 export function listMemoryEntries(input: MemoryListInput): Promise<MemoryEntry[]> {
   return invoke<MemoryEntry[]>("joi_list_memory_entries", { input });
+}
+
+export function generateMemoryCandidates(input: MemoryCurationInput): Promise<MemoryCurationResult> {
+  return invoke<MemoryCurationResult>("joi_generate_memory_candidates", { input });
+}
+
+export function updateMemoryStatus(input: MemoryStatusInput): Promise<MemoryEntry> {
+  return invoke<MemoryEntry>("joi_update_memory_status", { input });
 }
 
 export function generateBriefUnderstanding(

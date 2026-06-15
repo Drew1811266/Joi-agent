@@ -2,6 +2,7 @@ import type { FormEvent } from "react";
 
 import { BriefWorkspace, type BriefDraft, type ReferenceAssetDraft } from "./BriefWorkspace";
 import { EmptyState } from "./EmptyState";
+import { MemoryWorkspace, type MemoryCurationDraft } from "./MemoryWorkspace";
 import { MetricStrip } from "./MetricStrip";
 import { ResearchWorkspace, type ResearchDraft } from "./ResearchWorkspace";
 import type {
@@ -9,6 +10,7 @@ import type {
   Brand,
   BriefUnderstandingResult,
   CreativeDirection,
+  MemoryCurationResult,
   MemoryEntry,
   ProductUnderstanding,
   Project,
@@ -26,8 +28,11 @@ type ProjectWorkspaceProps = {
   };
   briefDraft: BriefDraft;
   creativeDirections: CreativeDirection[];
+  curatingMemory: boolean;
   generatingUnderstanding: boolean;
   generatingResearch: boolean;
+  memoryCurationDraft: MemoryCurationDraft;
+  memoryCurationResult: MemoryCurationResult | null;
   memoryDraft: {
     content: string;
     source: string;
@@ -35,6 +40,7 @@ type ProjectWorkspaceProps = {
   memoryEntries: MemoryEntry[];
   onBriefDraftChange: (field: keyof BriefDraft, value: string) => void;
   onBrandDraftChange: (field: "name" | "description", value: string) => void;
+  onMemoryCurationDraftChange: (field: keyof MemoryCurationDraft, value: string | boolean) => void;
   onMemoryDraftChange: (field: "content" | "source", value: string) => void;
   onProjectDraftChange: (field: "title" | "advertising_goal" | "duration_seconds", value: string) => void;
   onReferenceAssetDraftChange: (field: keyof ReferenceAssetDraft, value: string) => void;
@@ -42,9 +48,11 @@ type ProjectWorkspaceProps = {
   onSubmitBrand: () => void;
   onSubmitBriefUnderstanding: () => void;
   onSubmitMemory: () => void;
+  onSubmitMemoryCandidates: () => void;
   onSubmitProject: () => void;
   onSubmitReferenceAsset: () => void;
   onSubmitResearchReport: () => void;
+  onUpdateMemoryStatus: (id: string, status: "accepted" | "rejected") => void;
   productUnderstandings: ProductUnderstanding[];
   projectDraft: {
     title: string;
@@ -67,12 +75,16 @@ export function ProjectWorkspace({
   brandDraft,
   briefDraft,
   creativeDirections,
+  curatingMemory,
   generatingUnderstanding,
   generatingResearch,
+  memoryCurationDraft,
+  memoryCurationResult,
   memoryDraft,
   memoryEntries,
   onBriefDraftChange,
   onBrandDraftChange,
+  onMemoryCurationDraftChange,
   onMemoryDraftChange,
   onProjectDraftChange,
   onReferenceAssetDraftChange,
@@ -80,9 +92,11 @@ export function ProjectWorkspace({
   onSubmitBrand,
   onSubmitBriefUnderstanding,
   onSubmitMemory,
+  onSubmitMemoryCandidates,
   onSubmitProject,
   onSubmitReferenceAsset,
   onSubmitResearchReport,
+  onUpdateMemoryStatus,
   productUnderstandings,
   projectDraft,
   referenceAssetDraft,
@@ -225,11 +239,17 @@ export function ProjectWorkspace({
       ) : null}
       {activeTab === "Assets" ? <AssetsPanel assets={assets} /> : null}
       {activeTab === "Memory" ? (
-        <MemoryPanel
+        <MemoryWorkspace
+          curatingMemory={curatingMemory}
+          memoryCurationDraft={memoryCurationDraft}
+          memoryCurationResult={memoryCurationResult}
           memoryDraft={memoryDraft}
           memoryEntries={memoryEntries}
+          onMemoryCurationDraftChange={onMemoryCurationDraftChange}
           onMemoryDraftChange={onMemoryDraftChange}
           onSubmitMemory={onSubmitMemory}
+          onSubmitMemoryCandidates={onSubmitMemoryCandidates}
+          onUpdateMemoryStatus={onUpdateMemoryStatus}
           selectedProject={selectedProject}
         />
       ) : null}
@@ -259,62 +279,6 @@ function AssetsPanel({ assets }: { assets: Asset[] }) {
             <small>{asset.mime_type} · {asset.relative_path}</small>
           </article>
         ))}
-      </div>
-    </section>
-  );
-}
-
-function MemoryPanel({
-  memoryDraft,
-  memoryEntries,
-  onMemoryDraftChange,
-  onSubmitMemory,
-  selectedProject,
-}: {
-  memoryDraft: { content: string; source: string };
-  memoryEntries: MemoryEntry[];
-  onMemoryDraftChange: (field: "content" | "source", value: string) => void;
-  onSubmitMemory: () => void;
-  selectedProject: Project | null;
-}) {
-  return (
-    <section className="workspace-panel wide">
-      <h2>Memory</h2>
-      <form className="inline-form" onSubmit={submit(onSubmitMemory)}>
-        <label>
-          Project memory
-          <input
-            disabled={!selectedProject}
-            onChange={(event) => onMemoryDraftChange("content", event.target.value)}
-            placeholder="Keep fabric texture visible in close-up shots"
-            value={memoryDraft.content}
-          />
-        </label>
-        <label>
-          Source
-          <input
-            disabled={!selectedProject}
-            onChange={(event) => onMemoryDraftChange("source", event.target.value)}
-            placeholder="user note"
-            value={memoryDraft.source}
-          />
-        </label>
-        <button disabled={!selectedProject} type="submit">
-          Add Memory
-        </button>
-      </form>
-      <div className="data-list">
-        {memoryEntries.length === 0 ? (
-          <p className="muted">Accepted and proposed memory entries will appear here.</p>
-        ) : (
-          memoryEntries.map((entry) => (
-            <article className="data-row" key={entry.id}>
-              <strong>{entry.content}</strong>
-              <span>{entry.scope} · {entry.status}</span>
-              <small>{entry.source}</small>
-            </article>
-          ))
-        )}
       </div>
     </section>
   );

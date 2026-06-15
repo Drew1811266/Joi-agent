@@ -7,6 +7,7 @@ import {
   createReferenceAsset,
   formatError,
   generateBriefUnderstanding,
+  generateMemoryCandidates,
   generateResearchReport,
   getAgentRuntimeStatus,
   healthCheck,
@@ -22,11 +23,13 @@ import {
   saveProjectSnapshot,
   startAgentPlan,
   updateBrand,
+  updateMemoryStatus,
   updateProject,
 } from "./api/joiApi";
 import { AgentPanel } from "./components/AgentPanel";
 import { BrandProjectRail } from "./components/BrandProjectRail";
 import type { BriefDraft, ReferenceAssetDraft } from "./components/BriefWorkspace";
+import type { MemoryCurationDraft } from "./components/MemoryWorkspace";
 import { ProjectWorkspace } from "./components/ProjectWorkspace";
 import { researchSourceFromDraft, type ResearchDraft } from "./components/ResearchWorkspace";
 import { TopBar } from "./components/TopBar";
@@ -38,6 +41,7 @@ import type {
   BriefUnderstandingResult,
   CreativeDirection,
   HealthResponse,
+  MemoryCurationResult,
   MemoryEntry,
   ProductUnderstanding,
   Project,
@@ -78,6 +82,11 @@ const emptyProjectDraft: ProjectDraft = {
 const emptyMemoryDraft: MemoryDraft = {
   content: "",
   source: "user note",
+};
+
+const emptyMemoryCurationDraft: MemoryCurationDraft = {
+  feedback_text: "",
+  include_research_reports: true,
 };
 
 const emptyBriefDraft: BriefDraft = {
@@ -121,10 +130,14 @@ export default function App() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [briefDraft, setBriefDraft] = useState<BriefDraft>(emptyBriefDraft);
   const [creativeDirections, setCreativeDirections] = useState<CreativeDirection[]>([]);
+  const [curatingMemory, setCuratingMemory] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [generatingUnderstanding, setGeneratingUnderstanding] = useState(false);
   const [generatingResearch, setGeneratingResearch] = useState(false);
   const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [memoryCurationDraft, setMemoryCurationDraft] =
+    useState<MemoryCurationDraft>(emptyMemoryCurationDraft);
+  const [memoryCurationResult, setMemoryCurationResult] = useState<MemoryCurationResult | null>(null);
   const [memoryDraft, setMemoryDraft] = useState<MemoryDraft>(emptyMemoryDraft);
   const [memoryEntries, setMemoryEntries] = useState<MemoryEntry[]>([]);
   const [productUnderstandings, setProductUnderstandings] = useState<ProductUnderstanding[]>([]);
@@ -195,6 +208,8 @@ export default function App() {
         duration_seconds: String(selectedProject.duration_seconds),
       });
       setBriefDraft(emptyBriefDraft);
+      setMemoryCurationDraft(emptyMemoryCurationDraft);
+      setMemoryCurationResult(null);
       setReferenceAssetDraft(emptyReferenceAssetDraft);
       setResearchDraft(emptyResearchDraft);
       setResearchResult(null);
@@ -203,6 +218,8 @@ export default function App() {
     } else {
       setProjectDraft(emptyProjectDraft);
       setBriefDraft(emptyBriefDraft);
+      setMemoryCurationDraft(emptyMemoryCurationDraft);
+      setMemoryCurationResult(null);
       setReferenceAssetDraft(emptyReferenceAssetDraft);
       setResearchDraft(emptyResearchDraft);
       setResearchReports([]);
@@ -299,6 +316,8 @@ export default function App() {
     setBriefDraft(emptyBriefDraft);
     setCreativeDirections([]);
     setAgentRuns([]);
+    setMemoryCurationDraft(emptyMemoryCurationDraft);
+    setMemoryCurationResult(null);
     setMemoryEntries([]);
     setProductUnderstandings([]);
     setReferenceAssetDraft(emptyReferenceAssetDraft);
@@ -319,6 +338,8 @@ export default function App() {
     setBriefDraft(emptyBriefDraft);
     setCreativeDirections([]);
     setAgentRuns([]);
+    setMemoryCurationDraft(emptyMemoryCurationDraft);
+    setMemoryCurationResult(null);
     setMemoryEntries([]);
     setProductUnderstandings([]);
     setReferenceAssetDraft(emptyReferenceAssetDraft);
@@ -431,6 +452,64 @@ export default function App() {
       setMemoryDraft(emptyMemoryDraft);
       await refreshProjectState(selectedProject.id);
       setActivityLog((entries) => [...entries, `Added project memory ${memory.id}.`]);
+    } catch (submitError) {
+      setError(formatError(submitError));
+    }
+  }
+
+  async function submitMemoryCandidates() {
+    if (!selectedProject) {
+      setError("Select a project before generating memory candidates.");
+      return;
+    }
+    if (!memoryCurationDraft.include_research_reports && !memoryCurationDraft.feedback_text.trim()) {
+      setError("Memory candidate generation needs feedback or research reports.");
+      return;
+    }
+
+    try {
+      setCuratingMemory(true);
+      setError(null);
+      const result = await generateMemoryCandidates({
+        project_id: selectedProject.id,
+        feedback_text: memoryCurationDraft.feedback_text,
+        include_research_reports: memoryCurationDraft.include_research_reports,
+      });
+      setMemoryCurationResult(result);
+      await refreshProjectState(selectedProject.id);
+      setAgentRuns((runs) => [
+        { run: result.agent_run, events: result.agent_events },
+        ...runs.filter((item) => item.run.id !== result.agent_run.id),
+      ]);
+      setActivityLog((entries) => [
+        ...entries,
+        `Generated ${result.candidates.length} memory candidate(s).`,
+      ]);
+    } catch (submitError) {
+      setError(formatError(submitError));
+    } finally {
+      setCuratingMemory(false);
+    }
+  }
+
+  async function handleUpdateMemoryStatus(id: string, status: "accepted" | "rejected") {
+    try {
+      setError(null);
+      const memory = await updateMemoryStatus({ id, status });
+      setMemoryCurationResult((result) =>
+        result
+          ? {
+              ...result,
+              candidates: result.candidates.map((candidate) =>
+                candidate.entry.id === memory.id ? { ...candidate, entry: memory } : candidate,
+              ),
+            }
+          : result,
+      );
+      if (selectedProject) {
+        await refreshProjectState(selectedProject.id);
+      }
+      setActivityLog((entries) => [...entries, `Updated memory ${memory.id} to ${memory.status}.`]);
     } catch (submitError) {
       setError(formatError(submitError));
     }
@@ -618,12 +697,18 @@ export default function App() {
           brandDraft={brandDraft}
           briefDraft={briefDraft}
           creativeDirections={creativeDirections}
+          curatingMemory={curatingMemory}
           generatingUnderstanding={generatingUnderstanding}
           generatingResearch={generatingResearch}
+          memoryCurationDraft={memoryCurationDraft}
+          memoryCurationResult={memoryCurationResult}
           onBriefDraftChange={(field, value) => setBriefDraft((draft) => ({ ...draft, [field]: value }))}
           memoryDraft={memoryDraft}
           memoryEntries={memoryEntries}
           onBrandDraftChange={(field, value) => setBrandDraft((draft) => ({ ...draft, [field]: value }))}
+          onMemoryCurationDraftChange={(field, value) =>
+            setMemoryCurationDraft((draft) => ({ ...draft, [field]: value }))
+          }
           onMemoryDraftChange={(field, value) => setMemoryDraft((draft) => ({ ...draft, [field]: value }))}
           onProjectDraftChange={(field, value) =>
             setProjectDraft((draft) => ({
@@ -638,9 +723,11 @@ export default function App() {
           onSubmitBrand={submitBrand}
           onSubmitBriefUnderstanding={submitBriefUnderstanding}
           onSubmitMemory={submitMemory}
+          onSubmitMemoryCandidates={submitMemoryCandidates}
           onSubmitProject={submitProject}
           onSubmitReferenceAsset={submitReferenceAsset}
           onSubmitResearchReport={submitResearchReport}
+          onUpdateMemoryStatus={handleUpdateMemoryStatus}
           productUnderstandings={productUnderstandings}
           projectDraft={projectDraft}
           referenceAssetDraft={referenceAssetDraft}

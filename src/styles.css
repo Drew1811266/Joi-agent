@@ -347,8 +347,30 @@ form {
   gap: 14px;
 }
 
+.memory-layout {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
 .brief-form {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.memory-candidate-form {
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 220px) auto;
+  align-items: end;
+}
+
+.checkbox-label {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 8px;
+}
+
+.checkbox-label input {
+  width: auto;
 }
 
 .brief-form button[type="submit"],
@@ -424,6 +446,13 @@ form {
   display: grid;
   gap: 3px;
   padding: 12px;
+}
+
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
 }
 
 .agent-panel {
@@ -529,6 +558,8 @@ form {
   .workspace-grid,
   .brief-layout,
   .research-layout,
+  .memory-layout,
+  .memory-candidate-form,
   .inline-form {
     grid-template-columns: 1fr;
   }

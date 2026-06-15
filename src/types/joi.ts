@@ -149,6 +149,30 @@ export type MemoryListInput = {
   project_id: string | null;
 };
 
+export type MemoryCurationInput = {
+  project_id: string;
+  feedback_text: string;
+  include_research_reports: boolean;
+};
+
+export type MemoryCandidateResult = {
+  entry: MemoryEntry;
+  reason: string;
+  has_conflict: boolean;
+  conflict_memory_ids: string[];
+};
+
+export type MemoryCurationResult = {
+  candidates: MemoryCandidateResult[];
+  agent_run: AgentRun;
+  agent_events: AgentRunEvent[];
+};
+
+export type MemoryStatusInput = {
+  id: string;
+  status: "proposed" | "accepted" | "rejected";
+};
+
 export type SnapshotInput = {
   project_id: string;
   label: string | null;

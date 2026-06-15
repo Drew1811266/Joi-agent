@@ -137,6 +137,60 @@ describe("Joi workspace shell", () => {
             created_at: "2026-06-15T00:00:00Z",
             updated_at: "2026-06-15T00:00:00Z",
           });
+        case "joi_generate_memory_candidates":
+          return Promise.resolve({
+            candidates: [
+              {
+                entry: {
+                  id: "memory-candidate-1",
+                  scope: "project",
+                  brand_id: "brand-1",
+                  project_id: "project-1",
+                  content: "Use tactile close-ups as visual proof before the model movement.",
+                  source: "research report",
+                  source_entity_type: "research_report",
+                  source_entity_id: "research-1",
+                  confidence: 0.72,
+                  status: "proposed",
+                  created_at: "2026-06-15T00:00:00Z",
+                  updated_at: "2026-06-15T00:00:00Z",
+                },
+                reason: "Source-backed research implication can guide future generation.",
+                has_conflict: false,
+                conflict_memory_ids: [],
+              },
+            ],
+            agent_run: {
+              id: "run-memory-1",
+              project_id: "project-1",
+              user_goal: "Curate practical long-term memory candidates",
+              status: "completed",
+              runtime_kind: "hermes_core",
+              runtime_mode: "local_memory_bridge",
+              runtime_version: "0.16.0",
+              roles_json: ["memory_curator", "reviewer"],
+              plan_json: [],
+              result_summary: "Created 1 proposed memory candidate for Spring Drop Film.",
+              created_at: "2026-06-15T00:00:00Z",
+              updated_at: "2026-06-15T00:00:00Z",
+            },
+            agent_events: [],
+          });
+        case "joi_update_memory_status":
+          return Promise.resolve({
+            id: "memory-candidate-1",
+            scope: "project",
+            brand_id: "brand-1",
+            project_id: "project-1",
+            content: "Use tactile close-ups as visual proof before the model movement.",
+            source: "research report",
+            source_entity_type: "research_report",
+            source_entity_id: "research-1",
+            confidence: 0.72,
+            status: "accepted",
+            created_at: "2026-06-15T00:00:00Z",
+            updated_at: "2026-06-15T00:00:00Z",
+          });
         case "joi_create_brand":
           return Promise.resolve({
             id: "brand-2",
@@ -330,6 +384,41 @@ describe("Joi workspace shell", () => {
           project_id: "project-1",
           content: "Keep fabric texture visible",
           source: "user note",
+        },
+      });
+    });
+  });
+
+  test("generates and accepts memory candidates from the memory workspace", async () => {
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "Spring Drop Film" });
+    fireEvent.click(screen.getByRole("button", { name: "Memory" }));
+    fireEvent.change(screen.getByLabelText("Feedback for memory"), {
+      target: { value: "Keep tactile product proof in the opening shot." },
+    });
+    expect(screen.getByLabelText("Use research reports")).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: /generate memory candidates/i }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("joi_generate_memory_candidates", {
+        input: {
+          project_id: "project-1",
+          feedback_text: "Keep tactile product proof in the opening shot.",
+          include_research_reports: true,
+        },
+      });
+    });
+    expect(
+      await screen.findByText("Use tactile close-ups as visual proof before the model movement."),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("joi_update_memory_status", {
+        input: {
+          id: "memory-candidate-1",
+          status: "accepted",
         },
       });
     });
