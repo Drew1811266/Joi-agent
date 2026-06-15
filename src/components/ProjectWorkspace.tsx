@@ -1,6 +1,7 @@
 import type { FormEvent } from "react";
 
 import { BriefWorkspace, type BriefDraft, type ReferenceAssetDraft } from "./BriefWorkspace";
+import { BetaWorkflowPanel, type BetaWorkflowDraft } from "./BetaWorkflowPanel";
 import { DeliveryWorkspace, type DeliveryDraft } from "./DeliveryWorkspace";
 import { EmptyState } from "./EmptyState";
 import { MemoryWorkspace, type MemoryCurationDraft } from "./MemoryWorkspace";
@@ -11,6 +12,7 @@ import { ReviewWorkspace, type ReviewDraft } from "./ReviewWorkspace";
 import { StoryboardWorkspace, type StoryboardDraft } from "./StoryboardWorkspace";
 import type {
   Asset,
+  BetaWorkflowStatusResult,
   Brand,
   BriefUnderstandingResult,
   CreativeDirection,
@@ -39,6 +41,8 @@ type ProjectWorkspaceProps = {
   activeTab: string;
   applyingSuggestionId: string | null;
   assets: Asset[];
+  betaDraft: BetaWorkflowDraft;
+  betaStatus: BetaWorkflowStatusResult | null;
   brandDraft: {
     name: string;
     description: string;
@@ -67,6 +71,7 @@ type ProjectWorkspaceProps = {
   onApplyReviewSuggestion: (reviewId: string, suggestionId: string) => void;
   onBriefDraftChange: (field: keyof BriefDraft, value: string) => void;
   onBrandDraftChange: (field: "name" | "description", value: string) => void;
+  onBetaDraftChange: (field: keyof BetaWorkflowDraft, value: string | boolean) => void;
   onMemoryCurationDraftChange: (field: keyof MemoryCurationDraft, value: string | boolean) => void;
   onMemoryDraftChange: (field: "content" | "source", value: string) => void;
   onCopyPrompt: (copyText: string, packageId: string) => void;
@@ -78,6 +83,7 @@ type ProjectWorkspaceProps = {
   onRegenerateShot: (storyboardId: string, shotId: string) => void;
   onStoryboardDraftChange: (field: keyof StoryboardDraft, value: string) => void;
   onSubmitBrand: () => void;
+  onRunBetaWorkflow: () => void;
   onSubmitBriefUnderstanding: () => void;
   onSubmitDeliveryReport: () => void;
   onSubmitMemory: () => void;
@@ -114,6 +120,7 @@ type ProjectWorkspaceProps = {
   latestReviewSuggestions: QualityReviewSuggestion[];
   qualityReviews: QualityReview[];
   reviewDraft: ReviewDraft;
+  runningBetaWorkflow: boolean;
   savingDeliveryReportId: string | null;
   savingPromptId: string | null;
   savingShotId: string | null;
@@ -131,6 +138,8 @@ export function ProjectWorkspace({
   adapterProfiles,
   applyingSuggestionId,
   assets,
+  betaDraft,
+  betaStatus,
   brandDraft,
   briefDraft,
   creativeDirections,
@@ -149,6 +158,7 @@ export function ProjectWorkspace({
   memoryDraft,
   memoryEntries,
   onApplyReviewSuggestion,
+  onBetaDraftChange,
   onDeliveryDraftChange,
   onBriefDraftChange,
   onBrandDraftChange,
@@ -163,6 +173,7 @@ export function ProjectWorkspace({
   onRegenerateShot,
   onStoryboardDraftChange,
   onSubmitBrand,
+  onRunBetaWorkflow,
   onSubmitBriefUnderstanding,
   onSubmitDeliveryReport,
   onSubmitImagePrompts,
@@ -195,6 +206,7 @@ export function ProjectWorkspace({
   latestReviewSuggestions,
   qualityReviews,
   reviewDraft,
+  runningBetaWorkflow,
   savingDeliveryReportId,
   savingPromptId,
   savingShotId,
@@ -305,6 +317,15 @@ export function ProjectWorkspace({
               )}
             </div>
           </section>
+
+          <BetaWorkflowPanel
+            betaDraft={betaDraft}
+            betaStatus={betaStatus}
+            onBetaDraftChange={onBetaDraftChange}
+            onRunBetaWorkflow={onRunBetaWorkflow}
+            runningBetaWorkflow={runningBetaWorkflow}
+            selectedProject={selectedProject}
+          />
         </div>
       ) : null}
 

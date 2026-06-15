@@ -573,3 +573,49 @@ export type ResearchReportResult = {
   agent_run: AgentRun;
   agent_events: AgentRunEvent[];
 };
+
+export type BetaWorkflowStep = {
+  id: string;
+  title: string;
+  status: "complete" | "warning" | "action_required";
+  source_count: number;
+  target_tab: string;
+  action_label: string;
+  message: string;
+};
+
+export type BetaWorkflowStatusResult = {
+  project_id: string;
+  ready: boolean;
+  score: number;
+  steps: BetaWorkflowStep[];
+  next_action: string;
+  warnings: string[];
+};
+
+export type BetaWorkflowReferenceSource = {
+  title: string;
+  url: string;
+  source_type: string;
+  excerpt: string;
+};
+
+export type BetaWorkflowRunInput = {
+  project_id: string;
+  user_direction: string;
+  image_brief: string;
+  reference_sources: BetaWorkflowReferenceSource[];
+  memory_feedback: string;
+  save_snapshot: boolean;
+};
+
+export type BetaWorkflowRunResult = {
+  status: BetaWorkflowStatusResult;
+  generated_steps: string[];
+  skipped_steps: string[];
+  delivery_report_id: string | null;
+  package_preview: DeliveryPackagePreview | null;
+  snapshot_id: string | null;
+  agent_run: AgentRun;
+  agent_events: AgentRunEvent[];
+};

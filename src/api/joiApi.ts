@@ -8,6 +8,9 @@ import type {
   AgentRunWithEvents,
   AgentRuntimeStatus,
   Asset,
+  BetaWorkflowRunInput,
+  BetaWorkflowRunResult,
+  BetaWorkflowStatusResult,
   BriefUnderstandingInput,
   BriefUnderstandingResult,
   Brand,
@@ -215,6 +218,14 @@ export function applyQualityReviewSuggestion(
   input: ApplyReviewSuggestionInput,
 ): Promise<ApplyReviewSuggestionResult> {
   return invoke<ApplyReviewSuggestionResult>("joi_apply_quality_review_suggestion", { input });
+}
+
+export function getBetaWorkflowStatus(projectId: string): Promise<BetaWorkflowStatusResult> {
+  return invoke<BetaWorkflowStatusResult>("joi_get_beta_workflow_status", { project_id: projectId });
+}
+
+export function runBetaWorkflow(input: BetaWorkflowRunInput): Promise<BetaWorkflowRunResult> {
+  return invoke<BetaWorkflowRunResult>("joi_run_beta_workflow", { input });
 }
 
 export function generateDeliveryReport(

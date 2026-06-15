@@ -513,6 +513,83 @@ form {
   overflow-wrap: anywhere;
 }
 
+.status-pill {
+  display: inline-flex;
+  min-width: 78px;
+  justify-content: center;
+  border: 1px solid #d9ddd4;
+  border-radius: 8px;
+  color: #66706a;
+  font-size: 13px;
+  padding: 6px 8px;
+}
+
+.status-pill.complete {
+  border-color: #75a486;
+  background: #edf7f0;
+  color: #235b3a;
+}
+
+.beta-workflow-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.beta-workflow-form button {
+  justify-self: start;
+}
+
+.checkbox-row {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 8px;
+}
+
+.checkbox-row input {
+  width: auto;
+}
+
+.beta-step-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.beta-step {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid #d9ddd4;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.beta-step.complete {
+  border-color: #75a486;
+}
+
+.beta-step.warning {
+  border-color: #aa8b38;
+}
+
+.beta-step.action_required {
+  border-color: #c46a45;
+}
+
+.beta-step div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.beta-step span,
+.beta-step small {
+  overflow-wrap: anywhere;
+}
+
 .data-row {
   display: grid;
   gap: 3px;
@@ -850,6 +927,7 @@ form {
 
   .workspace-header,
   .workspace-grid,
+  .beta-workflow-form,
   .brief-layout,
   .research-layout,
   .memory-layout,
