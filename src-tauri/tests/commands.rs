@@ -5,14 +5,17 @@ use std::sync::Mutex;
 
 use common::TestApp;
 use joi_agent_lib::commands::{
-    create_brand, create_memory_entry, create_project, get_brand, get_project, joi_health_check,
-    list_brands, list_memory_entries, list_project_versions, list_projects, save_project_snapshot,
-    update_brand, update_project, AppState, AssetImportCommandInput, BrandInput, BrandUpdateInput,
-    MemoryEntryInput, MemoryListInput, ProjectExportCommandInput, ProjectImportCommandInput,
-    ProjectInput, ProjectUpdateInput, RestoreVersionInput, SnapshotInput,
+    create_brand, create_memory_entry, create_project, create_reference_asset,
+    generate_brief_understanding, get_brand, get_project, joi_health_check, list_brands,
+    list_creative_directions, list_memory_entries, list_product_understandings,
+    list_project_versions, list_projects, save_project_snapshot, update_brand, update_project,
+    AppState, AssetImportCommandInput, BrandInput, BrandUpdateInput, MemoryEntryInput,
+    MemoryListInput, ProjectExportCommandInput, ProjectImportCommandInput, ProjectInput,
+    ProjectUpdateInput, ReferenceAssetInput, RestoreVersionInput, SnapshotInput,
 };
 use joi_agent_lib::db::Database;
 use joi_agent_lib::error::JoiError;
+use joi_agent_lib::understanding::BriefUnderstandingInput;
 use serde_json::json;
 
 fn test_state() -> (TestApp, AppState) {
@@ -202,6 +205,104 @@ fn state_helpers_create_and_list_brand_project_memory_and_snapshot() {
     let versions = list_project_versions(&state, project.id.clone()).expect("list versions");
     assert_eq!(versions.len(), 1);
     assert_eq!(versions[0].id, version.id);
+}
+
+#[test]
+fn generates_brief_understanding_and_lists_saved_records() {
+    let (_app, state) = test_state();
+
+    let brand = create_brand(
+        &state,
+        BrandInput {
+            name: "Atelier Joi".to_string(),
+            description: "Contemporary womenswear with clean studio lighting".to_string(),
+        },
+    )
+    .unwrap();
+    let project = create_project(
+        &state,
+        ProjectInput {
+            brand_id: brand.id,
+            title: "Spring Drop Film".to_string(),
+            advertising_goal: "Launch awareness".to_string(),
+            duration_seconds: 15,
+        },
+    )
+    .unwrap();
+
+    let result = generate_brief_understanding(
+        &state,
+        BriefUnderstandingInput {
+            project_id: project.id.clone(),
+            brief_text: "15 second outerwear launch ad".to_string(),
+            product_name: "Lightweight trench".to_string(),
+            category: "outerwear".to_string(),
+            audience: "urban commuters".to_string(),
+            target_platforms: vec!["jimeng_video".to_string(), "grok_video".to_string()],
+            selling_points_text: "water-resistant cotton, soft structure".to_string(),
+            visual_direction: "clean studio walk with close fabric texture".to_string(),
+            constraints_text: "avoid heavy winter styling".to_string(),
+            reference_asset_ids: Vec::new(),
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.product_understanding.product_name, "Lightweight trench");
+    assert_eq!(
+        result.selling_points,
+        vec!["water-resistant cotton", "soft structure"]
+    );
+    assert_eq!(
+        result.missing_questions,
+        vec!["Which reference materials should Joi use as visual anchors?".to_string()]
+    );
+
+    let understandings = list_product_understandings(&state, project.id.clone()).unwrap();
+    assert_eq!(understandings.len(), 1);
+    let directions = list_creative_directions(&state, project.id).unwrap();
+    assert_eq!(directions.len(), 1);
+}
+
+#[test]
+fn creates_reference_asset_from_link_input() {
+    let (_app, state) = test_state();
+
+    let brand = create_brand(
+        &state,
+        BrandInput {
+            name: "Atelier Joi".to_string(),
+            description: "Contemporary womenswear".to_string(),
+        },
+    )
+    .unwrap();
+    let project = create_project(
+        &state,
+        ProjectInput {
+            brand_id: brand.id,
+            title: "Spring Drop Film".to_string(),
+            advertising_goal: "Launch awareness".to_string(),
+            duration_seconds: 15,
+        },
+    )
+    .unwrap();
+
+    let asset = create_reference_asset(
+        &state,
+        ReferenceAssetInput {
+            project_id: project.id,
+            kind: "link".to_string(),
+            display_name: "Spring campaign moodboard".to_string(),
+            source_uri: "https://example.com/moodboard".to_string(),
+        },
+    )
+    .unwrap();
+
+    assert_eq!(asset.kind, "link");
+    assert_eq!(asset.display_name, "Spring campaign moodboard");
+    assert_eq!(asset.source_uri, "https://example.com/moodboard");
+    assert_eq!(asset.relative_path, "");
+    assert_eq!(asset.mime_type, "text/uri-list");
+    assert_eq!(asset.file_size_bytes, 0);
 }
 
 #[test]

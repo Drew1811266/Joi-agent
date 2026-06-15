@@ -29,6 +29,58 @@ fn seeded_repo<'a>(db: &'a Database) -> (Repository<'a>, String) {
 }
 
 #[test]
+fn creates_product_understanding_with_full_material_context() {
+    let app = TestApp::new();
+    let db = Database::open(&app.db_path).expect("open database");
+    db.migrate().expect("migrate");
+    let repo = Repository::new(db.connection());
+    let brand = repo
+        .create_brand(BrandCreate {
+            name: "Atelier Joi".to_string(),
+            description: "Contemporary womenswear".to_string(),
+        })
+        .unwrap();
+    let project = repo
+        .create_project(ProjectCreate {
+            brand_id: brand.id,
+            title: "Spring Drop Film".to_string(),
+            advertising_goal: "Launch a 15 second outerwear ad".to_string(),
+            duration_seconds: 15,
+        })
+        .unwrap();
+
+    let understanding = repo
+        .create_product_understanding(ProductUnderstandingCreate {
+            project_id: project.id,
+            product_name: "Lightweight trench".to_string(),
+            category: "outerwear".to_string(),
+            audience: "urban commuters".to_string(),
+            selling_points: vec![
+                "water-resistant cotton".to_string(),
+                "soft structure".to_string(),
+            ],
+            constraints: vec!["avoid heavy winter styling".to_string()],
+            notes: "{\"format_version\":\"joi.product_understanding_notes.v1\"}".to_string(),
+        })
+        .unwrap();
+
+    assert_eq!(understanding.product_name, "Lightweight trench");
+    assert_eq!(understanding.category, "outerwear");
+    assert_eq!(understanding.audience, "urban commuters");
+    assert_eq!(
+        understanding.selling_points_json,
+        json!(["water-resistant cotton", "soft structure"])
+    );
+    assert_eq!(
+        understanding.constraints_json,
+        json!(["avoid heavy winter styling"])
+    );
+    assert!(understanding
+        .notes
+        .contains("joi.product_understanding_notes.v1"));
+}
+
+#[test]
 fn stores_storyboard_shots_and_prompt_packages() {
     let app = TestApp::new();
     let db = Database::open(&app.db_path).expect("open database");
@@ -51,6 +103,10 @@ fn stores_storyboard_shots_and_prompt_packages() {
             project_id: project_id.clone(),
             product_name: "Wool coat".into(),
             category: "Outerwear".into(),
+            audience: String::new(),
+            selling_points: Vec::new(),
+            constraints: Vec::new(),
+            notes: String::new(),
         })
         .expect("understanding");
     assert_eq!(understanding.project_id, project_id);
@@ -66,6 +122,10 @@ fn stores_storyboard_shots_and_prompt_packages() {
             project_id: project_id.clone(),
             title: "Quiet luxury".into(),
             concept: "Soft movement in city light".into(),
+            tone: String::new(),
+            visual_style: String::new(),
+            scene_direction: String::new(),
+            rationale: String::new(),
         })
         .expect("creative");
     assert_eq!(creative.project_id, project_id);

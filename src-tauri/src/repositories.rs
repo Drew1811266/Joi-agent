@@ -66,6 +66,10 @@ pub struct ProductUnderstandingCreate {
     pub project_id: String,
     pub product_name: String,
     pub category: String,
+    pub audience: String,
+    pub selling_points: Vec<String>,
+    pub constraints: Vec<String>,
+    pub notes: String,
 }
 
 #[derive(Debug, Clone)]
@@ -73,6 +77,10 @@ pub struct CreativeDirectionCreate {
     pub project_id: String,
     pub title: String,
     pub concept: String,
+    pub tone: String,
+    pub visual_style: String,
+    pub scene_direction: String,
+    pub rationale: String,
 }
 
 #[derive(Debug, Clone)]
@@ -446,12 +454,12 @@ impl<'a> Repository<'a> {
         let understanding = ProductUnderstanding {
             id: new_id(),
             project_id: input.project_id,
-            product_name: input.product_name,
-            category: input.category,
-            audience: String::new(),
-            selling_points_json: json!([]),
-            constraints_json: json!([]),
-            notes: String::new(),
+            product_name: input.product_name.trim().to_string(),
+            category: input.category.trim().to_string(),
+            audience: input.audience.trim().to_string(),
+            selling_points_json: json!(input.selling_points),
+            constraints_json: json!(input.constraints),
+            notes: input.notes,
             created_at: now,
             updated_at: now,
         };
@@ -488,10 +496,10 @@ impl<'a> Repository<'a> {
             project_id: input.project_id,
             title: input.title.trim().to_string(),
             concept: input.concept,
-            tone: String::new(),
-            visual_style: String::new(),
-            scene_direction: String::new(),
-            rationale: String::new(),
+            tone: input.tone,
+            visual_style: input.visual_style,
+            scene_direction: input.scene_direction,
+            rationale: input.rationale,
             created_at: now,
             updated_at: now,
         };

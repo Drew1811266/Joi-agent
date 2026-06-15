@@ -7,12 +7,19 @@ use tauri::State;
 use crate::assets::{AssetImportInput, AssetService};
 use crate::db::Database;
 use crate::error::{JoiError, JoiResult};
-use crate::models::{Asset, Brand, MemoryEntry, Project, ProjectVersion};
+use crate::models::{
+    Asset, Brand, CreativeDirection, MemoryEntry, ProductUnderstanding, Project, ProjectVersion,
+};
 use crate::project_package::{ProjectExportInput, ProjectImportInput, ProjectPackageService};
 use crate::repositories::{
-    BrandCreate, BrandUpdate, MemoryEntryCreate, ProjectCreate, ProjectUpdate, Repository,
+    AssetCreate, BrandCreate, BrandUpdate, MemoryEntryCreate, ProjectCreate, ProjectUpdate,
+    Repository,
 };
 use crate::snapshots::{ProjectSnapshotService, SaveSnapshotInput};
+use crate::understanding::{
+    generate_brief_understanding as generate_understanding, BriefUnderstandingInput,
+    BriefUnderstandingResult,
+};
 
 pub struct AppState {
     pub db: Mutex<Database>,
@@ -112,6 +119,14 @@ pub struct MemoryListInput {
     pub scope: String,
     pub brand_id: Option<String>,
     pub project_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ReferenceAssetInput {
+    pub project_id: String,
+    pub kind: String,
+    pub display_name: String,
+    pub source_uri: String,
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -236,6 +251,38 @@ pub fn joi_list_memory_entries(
     input: MemoryListInput,
 ) -> JoiResult<Vec<MemoryEntry>> {
     list_memory_entries(state.inner(), input)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn joi_generate_brief_understanding(
+    state: State<'_, AppState>,
+    input: BriefUnderstandingInput,
+) -> JoiResult<BriefUnderstandingResult> {
+    generate_brief_understanding(state.inner(), input)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn joi_list_product_understandings(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> JoiResult<Vec<ProductUnderstanding>> {
+    list_product_understandings(state.inner(), project_id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn joi_list_creative_directions(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> JoiResult<Vec<CreativeDirection>> {
+    list_creative_directions(state.inner(), project_id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn joi_create_reference_asset(
+    state: State<'_, AppState>,
+    input: ReferenceAssetInput,
+) -> JoiResult<Asset> {
+    create_reference_asset(state.inner(), input)
 }
 
 pub fn create_brand(state: &AppState, input: BrandInput) -> JoiResult<Brand> {
@@ -389,6 +436,55 @@ pub fn list_memory_entries(
         input.brand_id.as_deref(),
         input.project_id.as_deref(),
     )
+}
+
+pub fn generate_brief_understanding(
+    state: &AppState,
+    input: BriefUnderstandingInput,
+) -> JoiResult<BriefUnderstandingResult> {
+    let db = lock_db(state)?;
+    generate_understanding(&Repository::new(db.connection()), input)
+}
+
+pub fn list_product_understandings(
+    state: &AppState,
+    project_id: String,
+) -> JoiResult<Vec<ProductUnderstanding>> {
+    let db = lock_db(state)?;
+    Repository::new(db.connection()).list_product_understandings(&project_id)
+}
+
+pub fn list_creative_directions(
+    state: &AppState,
+    project_id: String,
+) -> JoiResult<Vec<CreativeDirection>> {
+    let db = lock_db(state)?;
+    Repository::new(db.connection()).list_creative_directions(&project_id)
+}
+
+pub fn create_reference_asset(state: &AppState, input: ReferenceAssetInput) -> JoiResult<Asset> {
+    if input.display_name.trim().is_empty() {
+        return Err(JoiError::Validation(
+            "Reference display name is required".to_string(),
+        ));
+    }
+    if input.source_uri.trim().is_empty() {
+        return Err(JoiError::Validation(
+            "Reference source URI is required".to_string(),
+        ));
+    }
+
+    let db = lock_db(state)?;
+    Repository::new(db.connection()).create_asset(AssetCreate {
+        project_id: input.project_id,
+        kind: input.kind,
+        display_name: input.display_name.trim().to_string(),
+        relative_path: String::new(),
+        source_uri: input.source_uri.trim().to_string(),
+        mime_type: "text/uri-list".to_string(),
+        file_size_bytes: 0,
+        sha256: String::new(),
+    })
 }
 
 fn lock_db(state: &AppState) -> JoiResult<MutexGuard<'_, Database>> {

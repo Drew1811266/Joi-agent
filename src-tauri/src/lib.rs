@@ -6,6 +6,7 @@ pub mod models;
 pub mod project_package;
 pub mod repositories;
 pub mod snapshots;
+pub mod understanding;
 
 mod validation;
 
@@ -51,7 +52,11 @@ pub fn run() {
             commands::joi_export_project,
             commands::joi_import_project,
             commands::joi_create_memory_entry,
-            commands::joi_list_memory_entries
+            commands::joi_list_memory_entries,
+            commands::joi_generate_brief_understanding,
+            commands::joi_list_product_understandings,
+            commands::joi_list_creative_directions,
+            commands::joi_create_reference_asset
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Joi Agent");

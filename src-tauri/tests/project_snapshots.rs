@@ -103,6 +103,10 @@ fn creates_project_snapshot_with_related_sections() {
             project_id: project.id.clone(),
             product_name: "Wool Coat".into(),
             category: "Outerwear".into(),
+            audience: String::new(),
+            selling_points: Vec::new(),
+            constraints: Vec::new(),
+            notes: String::new(),
         })
         .expect("product understanding");
     let direction = repo
@@ -110,6 +114,10 @@ fn creates_project_snapshot_with_related_sections() {
             project_id: project.id.clone(),
             title: "Quiet Luxury".into(),
             concept: "Soft movement in city light".into(),
+            tone: String::new(),
+            visual_style: String::new(),
+            scene_direction: String::new(),
+            rationale: String::new(),
         })
         .expect("creative direction");
     let storyboard = repo
