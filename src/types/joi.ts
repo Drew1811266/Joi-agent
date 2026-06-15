@@ -130,6 +130,17 @@ export type PromptPackage = {
   updated_at: string;
 };
 
+export type DeliveryReport = {
+  id: string;
+  project_id: string;
+  title: string;
+  markdown: string;
+  sections_json: unknown;
+  is_final_candidate: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ProjectVersion = {
   id: string;
   project_id: string;
@@ -364,6 +375,62 @@ export type PromptPackageUpdateInput = {
   negative_prompt: string;
   parameters_json: unknown;
   is_locked: boolean;
+};
+
+export type DeliveryReportGenerationInput = {
+  project_id: string;
+  user_direction: string;
+};
+
+export type DeliveryReportSectionStatus = {
+  id: string;
+  title: string;
+  status: "complete" | "partial" | "missing" | string;
+  source_count: number;
+  warning: string;
+};
+
+export type DeliveryPackagePreview = {
+  project_json_file_name: string;
+  assets_folder_name: string;
+  delivery_report_file_name: string;
+  included_assets_count: number;
+  included_prompt_packages_count: number;
+  included_storyboards_count: number;
+  warnings: string[];
+};
+
+export type DeliveryReportGenerationResult = {
+  report: DeliveryReport;
+  sections: DeliveryReportSectionStatus[];
+  package_preview: DeliveryPackagePreview;
+  agent_run: AgentRun;
+  agent_events: AgentRunEvent[];
+};
+
+export type DeliveryReportUpdateInput = {
+  id: string;
+  title: string;
+  markdown: string;
+  sections_json: unknown;
+  is_final_candidate: boolean;
+};
+
+export type DeliveryPackagePreviewInput = {
+  project_id: string;
+  delivery_report_id: string | null;
+};
+
+export type ProjectExportCommandInput = {
+  project_id: string;
+  export_dir: string;
+  delivery_report_id: string | null;
+};
+
+export type ProjectExportCommandResult = {
+  project_json_path: string;
+  assets_dir: string;
+  delivery_report_path: string | null;
 };
 
 export type ResearchFinding = {

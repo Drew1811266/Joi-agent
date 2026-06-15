@@ -12,6 +12,12 @@ import type {
   BrandInput,
   BrandUpdateInput,
   CreativeDirection,
+  DeliveryPackagePreview,
+  DeliveryPackagePreviewInput,
+  DeliveryReport,
+  DeliveryReportGenerationInput,
+  DeliveryReportGenerationResult,
+  DeliveryReportUpdateInput,
   HealthResponse,
   MemoryCurationInput,
   MemoryCurationResult,
@@ -25,6 +31,8 @@ import type {
   PromptPackageUpdateInput,
   PromptPackageView,
   Project,
+  ProjectExportCommandInput,
+  ProjectExportCommandResult,
   ProjectInput,
   ProjectUpdateInput,
   ProjectVersion,
@@ -171,6 +179,30 @@ export function listPromptPackages(projectId: string): Promise<PromptPackageView
 
 export function updatePromptPackage(input: PromptPackageUpdateInput): Promise<PromptPackageView> {
   return invoke<PromptPackageView>("joi_update_prompt_package", { input });
+}
+
+export function generateDeliveryReport(
+  input: DeliveryReportGenerationInput,
+): Promise<DeliveryReportGenerationResult> {
+  return invoke<DeliveryReportGenerationResult>("joi_generate_delivery_report", { input });
+}
+
+export function listDeliveryReports(projectId: string): Promise<DeliveryReport[]> {
+  return invoke<DeliveryReport[]>("joi_list_delivery_reports", { project_id: projectId });
+}
+
+export function updateDeliveryReport(input: DeliveryReportUpdateInput): Promise<DeliveryReport> {
+  return invoke<DeliveryReport>("joi_update_delivery_report", { input });
+}
+
+export function previewDeliveryPackage(
+  input: DeliveryPackagePreviewInput,
+): Promise<DeliveryPackagePreview> {
+  return invoke<DeliveryPackagePreview>("joi_preview_delivery_package", { input });
+}
+
+export function exportProject(input: ProjectExportCommandInput): Promise<ProjectExportCommandResult> {
+  return invoke<ProjectExportCommandResult>("joi_export_project", { input });
 }
 
 export function getAgentRuntimeStatus(): Promise<AgentRuntimeStatus> {

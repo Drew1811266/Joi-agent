@@ -182,6 +182,58 @@ function mockPromptGenerationResult(targetPlatforms: string[]) {
   };
 }
 
+function mockDeliveryReportResult(markdown = "# Spring Drop Film Delivery Report") {
+  const report = {
+    id: "delivery-report-1",
+    project_id: "project-1",
+    title: "Spring Drop Film Delivery Report",
+    markdown,
+    sections_json: {
+      format_version: "joi.delivery_report_sections.v1",
+      sections: [
+        {
+          id: "prompt_packages",
+          title: "Prompt Packages",
+          status: "complete",
+          source_count: 2,
+          warning: "",
+        },
+      ],
+    },
+    is_final_candidate: false,
+    created_at: "2026-06-15T00:00:00Z",
+    updated_at: "2026-06-15T00:00:00Z",
+  };
+  return {
+    report,
+    sections: report.sections_json.sections,
+    package_preview: {
+      project_json_file_name: "spring-drop-film.joi-project.json",
+      assets_folder_name: "spring-drop-film-assets",
+      delivery_report_file_name: "spring-drop-film-delivery-report.md",
+      included_assets_count: 0,
+      included_prompt_packages_count: 2,
+      included_storyboards_count: 1,
+      warnings: [],
+    },
+    agent_run: {
+      id: "run-delivery",
+      project_id: "project-1",
+      user_goal: "Generate a delivery report for Spring Drop Film.",
+      status: "completed",
+      runtime_kind: "hermes_core",
+      runtime_mode: "local_delivery_report_bridge",
+      runtime_version: "0.18.0",
+      roles_json: ["planner", "reviewer", "memory_curator"],
+      plan_json: [],
+      result_summary: "Generated delivery report.",
+      created_at: "2026-06-15T00:00:00Z",
+      updated_at: "2026-06-15T00:00:00Z",
+    },
+    agent_events: [],
+  };
+}
+
 describe("Joi workspace shell", () => {
   beforeEach(() => {
     invokeMock.mockReset();
@@ -233,6 +285,7 @@ describe("Joi workspace shell", () => {
         case "joi_list_product_understandings":
         case "joi_list_creative_directions":
         case "joi_list_research_reports":
+        case "joi_list_delivery_reports":
           return Promise.resolve([]);
         case "joi_list_storyboards":
           return Promise.resolve([
@@ -554,6 +607,22 @@ describe("Joi workspace shell", () => {
             missing_fields: [],
             completeness: [],
             sort_order: 1,
+          });
+        case "joi_generate_delivery_report":
+          return Promise.resolve(mockDeliveryReportResult());
+        case "joi_update_delivery_report":
+          return Promise.resolve({
+            ...mockDeliveryReportResult(args?.input?.markdown as string).report,
+            title: args?.input?.title ?? "Spring Drop Film Delivery Report",
+            is_final_candidate: args?.input?.is_final_candidate ?? false,
+          });
+        case "joi_preview_delivery_package":
+          return Promise.resolve(mockDeliveryReportResult().package_preview);
+        case "joi_export_project":
+          return Promise.resolve({
+            project_json_path: "D:/tmp/joi-export/spring-drop-film.joi-project.json",
+            assets_dir: "D:/tmp/joi-export/spring-drop-film-assets",
+            delivery_report_path: "D:/tmp/joi-export/spring-drop-film-delivery-report.md",
           });
         default:
           return Promise.resolve(null);
@@ -980,6 +1049,67 @@ describe("Joi workspace shell", () => {
       });
     });
     expect(await screen.findByText("Texture proof point")).toBeInTheDocument();
+  });
+
+  test("generates edits previews and exports delivery reports", async () => {
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "Spring Drop Film" });
+    fireEvent.click(screen.getByRole("button", { name: "Delivery" }));
+    fireEvent.change(screen.getByLabelText("Report direction"), {
+      target: { value: "Prepare final handoff." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /generate delivery report/i }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("joi_generate_delivery_report", {
+        input: {
+          project_id: "project-1",
+          user_direction: "Prepare final handoff.",
+        },
+      });
+    });
+    expect(await screen.findByText("spring-drop-film-delivery-report.md")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Markdown report"), {
+      target: { value: "# Edited Delivery Report" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save report/i }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "joi_update_delivery_report",
+        expect.objectContaining({
+          input: expect.objectContaining({
+            id: "delivery-report-1",
+            markdown: "# Edited Delivery Report",
+          }),
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /preview package/i }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("joi_preview_delivery_package", {
+        input: {
+          project_id: "project-1",
+          delivery_report_id: "delivery-report-1",
+        },
+      });
+    });
+
+    fireEvent.change(screen.getByLabelText("Export directory"), {
+      target: { value: "D:/tmp/joi-export" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /export package/i }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("joi_export_project", {
+        input: {
+          project_id: "project-1",
+          export_dir: "D:/tmp/joi-export",
+          delivery_report_id: "delivery-report-1",
+        },
+      });
+    });
   });
 
   test("starts an agent plan from the Agent panel", async () => {

@@ -1,6 +1,7 @@
 import type { FormEvent } from "react";
 
 import { BriefWorkspace, type BriefDraft, type ReferenceAssetDraft } from "./BriefWorkspace";
+import { DeliveryWorkspace, type DeliveryDraft } from "./DeliveryWorkspace";
 import { EmptyState } from "./EmptyState";
 import { MemoryWorkspace, type MemoryCurationDraft } from "./MemoryWorkspace";
 import { MetricStrip } from "./MetricStrip";
@@ -12,6 +13,9 @@ import type {
   Brand,
   BriefUnderstandingResult,
   CreativeDirection,
+  DeliveryPackagePreview,
+  DeliveryReport,
+  DeliveryReportUpdateInput,
   MemoryCurationResult,
   MemoryEntry,
   PromptAdapterProfile,
@@ -38,7 +42,11 @@ type ProjectWorkspaceProps = {
   creativeDirections: CreativeDirection[];
   curatingMemory: boolean;
   adapterProfiles: PromptAdapterProfile[];
+  deliveryDraft: DeliveryDraft;
+  deliveryReports: DeliveryReport[];
+  exportingDeliveryPackage: boolean;
   generatingPrompts: boolean;
+  generatingDeliveryReport: boolean;
   generatingStoryboard: boolean;
   generatingUnderstanding: boolean;
   generatingResearch: boolean;
@@ -49,6 +57,7 @@ type ProjectWorkspaceProps = {
     source: string;
   };
   memoryEntries: MemoryEntry[];
+  onDeliveryDraftChange: (field: keyof DeliveryDraft, value: string) => void;
   onBriefDraftChange: (field: keyof BriefDraft, value: string) => void;
   onBrandDraftChange: (field: "name" | "description", value: string) => void;
   onMemoryCurationDraftChange: (field: keyof MemoryCurationDraft, value: string | boolean) => void;
@@ -62,6 +71,7 @@ type ProjectWorkspaceProps = {
   onStoryboardDraftChange: (field: keyof StoryboardDraft, value: string) => void;
   onSubmitBrand: () => void;
   onSubmitBriefUnderstanding: () => void;
+  onSubmitDeliveryReport: () => void;
   onSubmitMemory: () => void;
   onSubmitMemoryCandidates: () => void;
   onSubmitImagePrompts: () => void;
@@ -71,9 +81,14 @@ type ProjectWorkspaceProps = {
   onSubmitResearchReport: () => void;
   onSubmitStoryboard: () => void;
   onUpdateMemoryStatus: (id: string, status: "accepted" | "rejected") => void;
+  onUpdateDeliveryReport: (input: DeliveryReportUpdateInput) => void;
+  onPreviewDeliveryPackage: (reportId: string) => void;
+  onExportDeliveryPackage: (reportId: string) => void;
   onUpdatePromptPackage: (input: PromptPackageUpdateInput) => void;
   onUpdateShot: (input: ShotUpdateInput) => void;
   productUnderstandings: ProductUnderstanding[];
+  packagePreview: DeliveryPackagePreview | null;
+  previewingDeliveryPackage: boolean;
   promptDraft: PromptDraft;
   promptPackages: PromptPackageView[];
   projectDraft: {
@@ -86,6 +101,7 @@ type ProjectWorkspaceProps = {
   researchDraft: ResearchDraft;
   researchReports: ResearchReport[];
   researchResult: ResearchReportResult | null;
+  savingDeliveryReportId: string | null;
   savingPromptId: string | null;
   savingShotId: string | null;
   selectedBrand: Brand | null;
@@ -105,7 +121,11 @@ export function ProjectWorkspace({
   briefDraft,
   creativeDirections,
   curatingMemory,
+  deliveryDraft,
+  deliveryReports,
+  exportingDeliveryPackage,
   generatingPrompts,
+  generatingDeliveryReport,
   generatingStoryboard,
   generatingUnderstanding,
   generatingResearch,
@@ -113,6 +133,7 @@ export function ProjectWorkspace({
   memoryCurationResult,
   memoryDraft,
   memoryEntries,
+  onDeliveryDraftChange,
   onBriefDraftChange,
   onBrandDraftChange,
   onMemoryCurationDraftChange,
@@ -126,6 +147,7 @@ export function ProjectWorkspace({
   onStoryboardDraftChange,
   onSubmitBrand,
   onSubmitBriefUnderstanding,
+  onSubmitDeliveryReport,
   onSubmitImagePrompts,
   onSubmitMemory,
   onSubmitMemoryCandidates,
@@ -135,9 +157,14 @@ export function ProjectWorkspace({
   onSubmitResearchReport,
   onSubmitStoryboard,
   onUpdateMemoryStatus,
+  onUpdateDeliveryReport,
+  onPreviewDeliveryPackage,
+  onExportDeliveryPackage,
   onUpdatePromptPackage,
   onUpdateShot,
   productUnderstandings,
+  packagePreview,
+  previewingDeliveryPackage,
   promptDraft,
   promptPackages,
   projectDraft,
@@ -146,6 +173,7 @@ export function ProjectWorkspace({
   researchDraft,
   researchReports,
   researchResult,
+  savingDeliveryReportId,
   savingPromptId,
   savingShotId,
   selectedBrand,
@@ -316,6 +344,23 @@ export function ProjectWorkspace({
           storyboards={storyboards}
         />
       ) : null}
+      {activeTab === "Delivery" ? (
+        <DeliveryWorkspace
+          deliveryDraft={deliveryDraft}
+          deliveryReports={deliveryReports}
+          exportingDeliveryPackage={exportingDeliveryPackage}
+          generatingDeliveryReport={generatingDeliveryReport}
+          onDeliveryDraftChange={onDeliveryDraftChange}
+          onExportDeliveryPackage={onExportDeliveryPackage}
+          onGenerateDeliveryReport={onSubmitDeliveryReport}
+          onPreviewDeliveryPackage={onPreviewDeliveryPackage}
+          onUpdateDeliveryReport={onUpdateDeliveryReport}
+          packagePreview={packagePreview}
+          previewingDeliveryPackage={previewingDeliveryPackage}
+          savingDeliveryReportId={savingDeliveryReportId}
+          selectedProject={selectedProject}
+        />
+      ) : null}
       {activeTab === "Assets" ? <AssetsPanel assets={assets} /> : null}
       {activeTab === "Memory" ? (
         <MemoryWorkspace
@@ -333,7 +378,7 @@ export function ProjectWorkspace({
         />
       ) : null}
       {activeTab === "Versions" ? <VersionsPanel versions={versions} /> : null}
-      {!["Overview", "Brief", "Research", "Storyboard", "Prompts", "Assets", "Memory", "Versions"].includes(activeTab) ? (
+      {!["Overview", "Brief", "Research", "Storyboard", "Prompts", "Delivery", "Assets", "Memory", "Versions"].includes(activeTab) ? (
         <EmptyState
           body="This workspace section is reserved for the next content workflow milestone."
           title={`${activeTab} workspace`}

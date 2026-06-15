@@ -378,6 +378,11 @@ form {
   gap: 14px;
 }
 
+.delivery-layout {
+  display: grid;
+  gap: 14px;
+}
+
 .brief-form {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -394,6 +399,16 @@ form {
 
 .prompt-generator-form {
   grid-template-columns: minmax(0, 1fr) minmax(220px, 0.55fr) auto;
+  align-items: end;
+}
+
+.delivery-toolbar {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.delivery-export-form {
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
 }
 
@@ -627,6 +642,42 @@ form {
   justify-content: flex-end;
 }
 
+.delivery-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.delivery-warning-list {
+  display: grid;
+  gap: 8px;
+}
+
+.delivery-warning-list span {
+  border: 1px solid #d8c285;
+  border-radius: 6px;
+  background: #fff9e6;
+  color: #6a5112;
+  font-size: 12px;
+  padding: 8px;
+}
+
+.delivery-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(190px, 260px) minmax(0, 1fr);
+  gap: 14px;
+}
+
+.delivery-report-list {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.delivery-edit-form {
+  grid-template-columns: minmax(0, 1fr) minmax(170px, 220px);
+}
+
 .agent-panel {
   border-left: 1px solid #d9ddd4;
   padding: 18px 14px;
@@ -732,6 +783,10 @@ form {
   .research-layout,
   .memory-layout,
   .memory-candidate-form,
+  .delivery-toolbar,
+  .delivery-export-form,
+  .delivery-editor-grid,
+  .delivery-edit-form,
   .prompt-generator-form,
   .prompt-edit-form,
   .storyboard-toolbar,
@@ -746,6 +801,7 @@ form {
 
   .workflow-map,
   .metric-strip,
+  .delivery-preview-grid,
   .prompt-option-grid,
   .shot-meta-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -794,6 +850,10 @@ form {
   }
 
   .prompt-option-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .delivery-preview-grid {
     grid-template-columns: 1fr;
   }
 }

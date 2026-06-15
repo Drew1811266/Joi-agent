@@ -5,8 +5,10 @@ import {
   createMemoryEntry,
   createProject,
   createReferenceAsset,
+  exportProject,
   formatError,
   generateBriefUnderstanding,
+  generateDeliveryReport,
   generateMemoryCandidates,
   generatePromptPackages,
   generateResearchReport,
@@ -18,6 +20,7 @@ import {
   listAssets,
   listBrands,
   listCreativeDirections,
+  listDeliveryReports,
   listMemoryEntries,
   listPromptPackages,
   listProductUnderstandings,
@@ -25,10 +28,12 @@ import {
   listProjects,
   listResearchReports,
   listStoryboards,
+  previewDeliveryPackage,
   regenerateShot,
   saveProjectSnapshot,
   startAgentPlan,
   updateBrand,
+  updateDeliveryReport,
   updateMemoryStatus,
   updatePromptPackage,
   updateProject,
@@ -38,6 +43,7 @@ import { AgentPanel } from "./components/AgentPanel";
 import { BrandProjectRail } from "./components/BrandProjectRail";
 import type { BriefDraft, ReferenceAssetDraft } from "./components/BriefWorkspace";
 import type { MemoryCurationDraft } from "./components/MemoryWorkspace";
+import type { DeliveryDraft } from "./components/DeliveryWorkspace";
 import type { PromptDraft } from "./components/PromptWorkspace";
 import { ProjectWorkspace } from "./components/ProjectWorkspace";
 import { researchSourceFromDraft, type ResearchDraft } from "./components/ResearchWorkspace";
@@ -50,6 +56,9 @@ import type {
   Brand,
   BriefUnderstandingResult,
   CreativeDirection,
+  DeliveryPackagePreview,
+  DeliveryReport,
+  DeliveryReportUpdateInput,
   HealthResponse,
   MemoryCurationResult,
   MemoryEntry,
@@ -147,6 +156,11 @@ const emptyPromptDraft: PromptDraft = {
   user_direction: "",
 };
 
+const emptyDeliveryDraft: DeliveryDraft = {
+  user_direction: "",
+  export_dir: "",
+};
+
 const defaultAgentGoal = "Plan the next content workflow steps for this project";
 
 export default function App() {
@@ -163,7 +177,11 @@ export default function App() {
   const [briefDraft, setBriefDraft] = useState<BriefDraft>(emptyBriefDraft);
   const [creativeDirections, setCreativeDirections] = useState<CreativeDirection[]>([]);
   const [curatingMemory, setCuratingMemory] = useState(false);
+  const [deliveryDraft, setDeliveryDraft] = useState<DeliveryDraft>(emptyDeliveryDraft);
+  const [deliveryReports, setDeliveryReports] = useState<DeliveryReport[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [exportingDeliveryPackage, setExportingDeliveryPackage] = useState(false);
+  const [generatingDeliveryReport, setGeneratingDeliveryReport] = useState(false);
   const [generatingStoryboard, setGeneratingStoryboard] = useState(false);
   const [generatingPrompts, setGeneratingPrompts] = useState(false);
   const [generatingUnderstanding, setGeneratingUnderstanding] = useState(false);
@@ -174,6 +192,8 @@ export default function App() {
   const [memoryCurationResult, setMemoryCurationResult] = useState<MemoryCurationResult | null>(null);
   const [memoryDraft, setMemoryDraft] = useState<MemoryDraft>(emptyMemoryDraft);
   const [memoryEntries, setMemoryEntries] = useState<MemoryEntry[]>([]);
+  const [packagePreview, setPackagePreview] = useState<DeliveryPackagePreview | null>(null);
+  const [previewingDeliveryPackage, setPreviewingDeliveryPackage] = useState(false);
   const [productUnderstandings, setProductUnderstandings] = useState<ProductUnderstanding[]>([]);
   const [promptDraft, setPromptDraft] = useState<PromptDraft>(emptyPromptDraft);
   const [promptPackages, setPromptPackages] = useState<PromptPackageView[]>([]);
@@ -186,6 +206,7 @@ export default function App() {
   const [researchReports, setResearchReports] = useState<ResearchReport[]>([]);
   const [researchResult, setResearchResult] = useState<ResearchReportResult | null>(null);
   const [regeneratingShotId, setRegeneratingShotId] = useState<string | null>(null);
+  const [savingDeliveryReportId, setSavingDeliveryReportId] = useState<string | null>(null);
   const [savingPromptId, setSavingPromptId] = useState<string | null>(null);
   const [savingSnapshot, setSavingSnapshot] = useState(false);
   const [savingShotId, setSavingShotId] = useState<string | null>(null);
@@ -250,8 +271,11 @@ export default function App() {
         duration_seconds: String(selectedProject.duration_seconds),
       });
       setBriefDraft(emptyBriefDraft);
+      setDeliveryDraft(emptyDeliveryDraft);
+      setDeliveryReports([]);
       setMemoryCurationDraft(emptyMemoryCurationDraft);
       setMemoryCurationResult(null);
+      setPackagePreview(null);
       setPromptDraft(emptyPromptDraft);
       setPromptPackages([]);
       setReferenceAssetDraft(emptyReferenceAssetDraft);
@@ -267,8 +291,11 @@ export default function App() {
     } else {
       setProjectDraft(emptyProjectDraft);
       setBriefDraft(emptyBriefDraft);
+      setDeliveryDraft(emptyDeliveryDraft);
+      setDeliveryReports([]);
       setMemoryCurationDraft(emptyMemoryCurationDraft);
       setMemoryCurationResult(null);
+      setPackagePreview(null);
       setPromptDraft(emptyPromptDraft);
       setPromptPackages([]);
       setReferenceAssetDraft(emptyReferenceAssetDraft);
@@ -340,6 +367,7 @@ export default function App() {
         reportList,
         storyboardList,
         promptPackageList,
+        deliveryReportList,
         runList,
       ] = await Promise.all([
         listAssets(projectId),
@@ -350,6 +378,7 @@ export default function App() {
         listResearchReports(projectId),
         listStoryboards(projectId),
         listPromptPackages(projectId),
+        listDeliveryReports(projectId),
         listAgentRuns(projectId),
       ]);
       setAssets(assetList);
@@ -360,6 +389,7 @@ export default function App() {
       setResearchReports(reportList);
       setStoryboards(storyboardList);
       setPromptPackages(promptPackageList);
+      setDeliveryReports(deliveryReportList);
       setAgentRuns(runList);
     } catch (loadError) {
       setError(formatError(loadError));
@@ -377,10 +407,13 @@ export default function App() {
     setAssets([]);
     setBriefDraft(emptyBriefDraft);
     setCreativeDirections([]);
+    setDeliveryDraft(emptyDeliveryDraft);
+    setDeliveryReports([]);
     setAgentRuns([]);
     setMemoryCurationDraft(emptyMemoryCurationDraft);
     setMemoryCurationResult(null);
     setMemoryEntries([]);
+    setPackagePreview(null);
     setProductUnderstandings([]);
     setPromptDraft(emptyPromptDraft);
     setPromptPackages([]);
@@ -404,10 +437,13 @@ export default function App() {
     setAssets([]);
     setBriefDraft(emptyBriefDraft);
     setCreativeDirections([]);
+    setDeliveryDraft(emptyDeliveryDraft);
+    setDeliveryReports([]);
     setAgentRuns([]);
     setMemoryCurationDraft(emptyMemoryCurationDraft);
     setMemoryCurationResult(null);
     setMemoryEntries([]);
+    setPackagePreview(null);
     setProductUnderstandings([]);
     setPromptDraft(emptyPromptDraft);
     setPromptPackages([]);
@@ -908,6 +944,115 @@ export default function App() {
     }
   }
 
+  async function submitDeliveryReport() {
+    if (!selectedProject) {
+      setError("Select a project before generating a delivery report.");
+      return;
+    }
+
+    try {
+      setGeneratingDeliveryReport(true);
+      setError(null);
+      const result = await generateDeliveryReport({
+        project_id: selectedProject.id,
+        user_direction: deliveryDraft.user_direction,
+      });
+      await refreshProjectState(selectedProject.id);
+      setDeliveryReports((reports) => [
+        result.report,
+        ...reports.filter((report) => report.id !== result.report.id),
+      ]);
+      setPackagePreview(result.package_preview);
+      setAgentRuns((runs) => [
+        { run: result.agent_run, events: result.agent_events },
+        ...runs.filter((item) => item.run.id !== result.agent_run.id),
+      ]);
+      setActivityLog((entries) => [...entries, `Generated delivery report ${result.report.id}.`]);
+    } catch (submitError) {
+      setError(formatError(submitError));
+    } finally {
+      setGeneratingDeliveryReport(false);
+    }
+  }
+
+  async function handleUpdateDeliveryReport(input: DeliveryReportUpdateInput) {
+    try {
+      setSavingDeliveryReportId(input.id);
+      setError(null);
+      const updated = await updateDeliveryReport(input);
+      if (selectedProject) {
+        await refreshProjectState(selectedProject.id);
+      }
+      setDeliveryReports((reports) => {
+        let replaced = false;
+        const next = reports.map((report) => {
+          if (report.id !== updated.id) {
+            return report;
+          }
+          replaced = true;
+          return updated;
+        });
+        return replaced ? next : [updated, ...next];
+      });
+      setActivityLog((entries) => [...entries, `Updated delivery report ${updated.id}.`]);
+    } catch (submitError) {
+      setError(formatError(submitError));
+    } finally {
+      setSavingDeliveryReportId(null);
+    }
+  }
+
+  async function handlePreviewDeliveryPackage(reportId: string) {
+    if (!selectedProject) {
+      setError("Select a project before previewing a delivery package.");
+      return;
+    }
+
+    try {
+      setPreviewingDeliveryPackage(true);
+      setError(null);
+      const preview = await previewDeliveryPackage({
+        project_id: selectedProject.id,
+        delivery_report_id: reportId,
+      });
+      setPackagePreview(preview);
+      setActivityLog((entries) => [...entries, `Previewed delivery package for ${selectedProject.title}.`]);
+    } catch (submitError) {
+      setError(formatError(submitError));
+    } finally {
+      setPreviewingDeliveryPackage(false);
+    }
+  }
+
+  async function handleExportDeliveryPackage(reportId: string) {
+    if (!selectedProject) {
+      setError("Select a project before exporting a delivery package.");
+      return;
+    }
+    if (!deliveryDraft.export_dir.trim()) {
+      setError("Export directory is required.");
+      return;
+    }
+
+    try {
+      setExportingDeliveryPackage(true);
+      setError(null);
+      const result = await exportProject({
+        project_id: selectedProject.id,
+        export_dir: deliveryDraft.export_dir,
+        delivery_report_id: reportId,
+      });
+      setActivityLog((entries) => [
+        ...entries,
+        `Exported delivery package to ${result.project_json_path}.`,
+      ]);
+    } catch (submitError) {
+      setError(formatError(submitError));
+    } finally {
+      setExportingDeliveryPackage(false);
+    }
+  }
+
   async function handleSaveSnapshot() {
     if (!selectedProject) {
       setError("Select a project before saving a snapshot.");
@@ -990,12 +1135,17 @@ export default function App() {
           briefDraft={briefDraft}
           creativeDirections={creativeDirections}
           curatingMemory={curatingMemory}
+          deliveryDraft={deliveryDraft}
+          deliveryReports={deliveryReports}
+          exportingDeliveryPackage={exportingDeliveryPackage}
           generatingPrompts={generatingPrompts}
+          generatingDeliveryReport={generatingDeliveryReport}
           generatingUnderstanding={generatingUnderstanding}
           generatingResearch={generatingResearch}
           memoryCurationDraft={memoryCurationDraft}
           memoryCurationResult={memoryCurationResult}
           onBriefDraftChange={(field, value) => setBriefDraft((draft) => ({ ...draft, [field]: value }))}
+          onDeliveryDraftChange={(field, value) => setDeliveryDraft((draft) => ({ ...draft, [field]: value }))}
           memoryDraft={memoryDraft}
           memoryEntries={memoryEntries}
           onBrandDraftChange={(field, value) => setBrandDraft((draft) => ({ ...draft, [field]: value }))}
@@ -1020,6 +1170,7 @@ export default function App() {
           }
           onSubmitBrand={submitBrand}
           onSubmitBriefUnderstanding={submitBriefUnderstanding}
+          onSubmitDeliveryReport={submitDeliveryReport}
           onSubmitImagePrompts={submitImagePrompts}
           onSubmitMemory={submitMemory}
           onSubmitMemoryCandidates={submitMemoryCandidates}
@@ -1029,9 +1180,14 @@ export default function App() {
           onSubmitStoryboard={submitStoryboardGeneration}
           onSubmitVideoPrompts={submitVideoPrompts}
           onUpdatePromptPackage={handleUpdatePromptPackage}
+          onUpdateDeliveryReport={handleUpdateDeliveryReport}
+          onPreviewDeliveryPackage={handlePreviewDeliveryPackage}
+          onExportDeliveryPackage={handleExportDeliveryPackage}
           onUpdateShot={handleUpdateShot}
           onUpdateMemoryStatus={handleUpdateMemoryStatus}
           onRegenerateShot={handleRegenerateShot}
+          packagePreview={packagePreview}
+          previewingDeliveryPackage={previewingDeliveryPackage}
           productUnderstandings={productUnderstandings}
           promptDraft={promptDraft}
           promptPackages={promptPackages}
@@ -1041,6 +1197,7 @@ export default function App() {
           researchReports={researchReports}
           researchResult={researchResult}
           regeneratingShotId={regeneratingShotId}
+          savingDeliveryReportId={savingDeliveryReportId}
           savingPromptId={savingPromptId}
           savingShotId={savingShotId}
           selectedBrand={selectedBrand}
