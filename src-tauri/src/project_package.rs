@@ -12,12 +12,14 @@ use crate::snapshots::ProjectSnapshotService;
 pub struct ProjectExportInput {
     pub project_id: String,
     pub export_dir: PathBuf,
+    pub delivery_report_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectExportResult {
     pub project_json_path: PathBuf,
     pub assets_dir: PathBuf,
+    pub delivery_report_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -58,11 +60,35 @@ impl<'a> ProjectPackageService<'a> {
         let assets_folder = format!("{slug}-assets");
         let project_json_path = input.export_dir.join(format!("{slug}.joi-project.json"));
         let assets_dir = input.export_dir.join(&assets_folder);
+        let delivery_report = match input.delivery_report_id.as_deref() {
+            Some(report_id) => {
+                let report = repo.get_delivery_report(report_id)?;
+                if report.project_id != project.id {
+                    return Err(JoiError::Package(format!(
+                        "project package delivery report {} does not belong to project {}",
+                        report.id, project.id
+                    )));
+                }
+                Some(report)
+            }
+            None => None,
+        };
+        let delivery_report_path = delivery_report
+            .as_ref()
+            .map(|_| input.export_dir.join(format!("{slug}-delivery-report.md")));
         if project_json_path.exists() {
             return Err(JoiError::Package(format!(
                 "project package already exists: {}",
                 project_json_path.display()
             )));
+        }
+        if let Some(path) = delivery_report_path.as_ref() {
+            if path.exists() {
+                return Err(JoiError::Package(format!(
+                    "delivery report export already exists: {}",
+                    path.display()
+                )));
+            }
         }
 
         std::fs::create_dir_all(&input.export_dir)?;
@@ -71,18 +97,34 @@ impl<'a> ProjectPackageService<'a> {
         let snapshot = ProjectSnapshotService::new(self.connection).build_snapshot(&project.id)?;
         copy_managed_project_assets(&repo, &self.asset_root, &project.id, &assets_dir)?;
 
-        let package = json!({
+        let mut package = json!({
             "format_version": 1,
             "exported_by": "Joi Agent",
-            "project_id": project.id,
+            "project_id": project.id.clone(),
             "snapshot": snapshot,
             "assets_folder": assets_folder,
         });
+        if let (Some(report), Some(path)) =
+            (delivery_report.as_ref(), delivery_report_path.as_ref())
+        {
+            let markdown_file = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_default()
+                .to_string();
+            package["delivery_report"] = json!({
+                "id": report.id,
+                "title": report.title,
+                "markdown_file": markdown_file,
+            });
+            std::fs::write(path, report.markdown.as_bytes())?;
+        }
         std::fs::write(&project_json_path, serde_json::to_vec_pretty(&package)?)?;
 
         Ok(ProjectExportResult {
             project_json_path,
             assets_dir,
+            delivery_report_path,
         })
     }
 

@@ -6,20 +6,23 @@ use std::sync::Mutex;
 use common::TestApp;
 use joi_agent_lib::agent_runtime::AgentPlanInput;
 use joi_agent_lib::commands::{
-    create_brand, create_memory_entry, create_project, create_reference_asset,
-    generate_brief_understanding, generate_memory_candidates, generate_prompt_packages,
-    generate_research_report, generate_storyboard, get_agent_runtime_status, get_brand,
-    get_project, get_prompt_adapter_profiles, joi_health_check, list_agent_runs, list_brands,
-    list_creative_directions, list_memory_entries, list_product_understandings,
-    list_project_versions, list_projects, list_prompt_packages, list_research_reports,
-    list_storyboards, regenerate_shot, resolve_workspace_root, save_project_snapshot,
-    start_agent_plan, update_brand, update_memory_status, update_project, update_prompt_package,
-    update_shot, AppState, AssetImportCommandInput, BrandInput, BrandUpdateInput, MemoryEntryInput,
+    create_brand, create_memory_entry, create_project, create_reference_asset, export_project,
+    generate_brief_understanding, generate_delivery_report, generate_memory_candidates,
+    generate_prompt_packages, generate_research_report, generate_storyboard,
+    get_agent_runtime_status, get_brand, get_project, get_prompt_adapter_profiles,
+    joi_health_check, list_agent_runs, list_brands, list_creative_directions,
+    list_delivery_reports, list_memory_entries, list_product_understandings, list_project_versions,
+    list_projects, list_prompt_packages, list_research_reports, list_storyboards,
+    preview_delivery_package, regenerate_shot, resolve_workspace_root, save_project_snapshot,
+    start_agent_plan, update_brand, update_delivery_report, update_memory_status, update_project,
+    update_prompt_package, update_shot, AppState, AssetImportCommandInput, BrandInput,
+    BrandUpdateInput, DeliveryPackagePreviewInput, DeliveryReportUpdateInput, MemoryEntryInput,
     MemoryListInput, MemoryStatusInput, ProjectExportCommandInput, ProjectImportCommandInput,
     ProjectInput, ProjectUpdateInput, PromptPackageUpdateInput, ReferenceAssetInput,
     RestoreVersionInput, ShotUpdateInput, SnapshotInput,
 };
 use joi_agent_lib::db::Database;
+use joi_agent_lib::delivery_report::DeliveryReportGenerationInput;
 use joi_agent_lib::error::JoiError;
 use joi_agent_lib::memory_curation::MemoryCurationInput;
 use joi_agent_lib::prompt_adapter::PromptGenerationInput;
@@ -119,6 +122,18 @@ fn command_inputs_round_trip_through_json() {
     }))
     .expect("export input");
     assert_eq!(export.export_dir, PathBuf::from("D:/tmp/export"));
+    assert_eq!(export.delivery_report_id, None);
+
+    let export_with_report: ProjectExportCommandInput = serde_json::from_value(json!({
+        "project_id": "project-1",
+        "export_dir": "D:/tmp/export",
+        "delivery_report_id": "report-1"
+    }))
+    .expect("export input with report");
+    assert_eq!(
+        export_with_report.delivery_report_id.as_deref(),
+        Some("report-1")
+    );
 
     let import: ProjectImportCommandInput = serde_json::from_value(json!({
         "project_json_path": "D:/tmp/export/project.joi-project.json"
@@ -240,6 +255,29 @@ fn command_inputs_round_trip_through_json() {
     }))
     .expect("prompt update input");
     assert!(prompt_update.is_locked);
+
+    let delivery_update: DeliveryReportUpdateInput = serde_json::from_value(json!({
+        "id": "report-1",
+        "title": "Report",
+        "markdown": "# Report",
+        "sections_json": {
+            "format_version": "joi.delivery_report_sections.v1",
+            "sections": []
+        },
+        "is_final_candidate": true
+    }))
+    .expect("delivery report update input");
+    assert!(delivery_update.is_final_candidate);
+
+    let delivery_preview: DeliveryPackagePreviewInput = serde_json::from_value(json!({
+        "project_id": "project-1",
+        "delivery_report_id": "report-1"
+    }))
+    .expect("delivery package preview input");
+    assert_eq!(
+        delivery_preview.delivery_report_id.as_deref(),
+        Some("report-1")
+    );
 }
 
 #[test]
@@ -845,6 +883,144 @@ fn state_helpers_generate_list_and_update_prompt_packages() {
     assert_eq!(updated.package.prompt_text, "edited prompt");
     assert_eq!(updated.package.negative_prompt, "edited negative");
     assert!(updated.package.is_locked);
+}
+
+#[test]
+fn state_helpers_generate_update_list_preview_and_export_delivery_report() {
+    let (app, state) = test_state();
+    let brand = create_brand(
+        &state,
+        BrandInput {
+            name: "Atelier Joi".to_string(),
+            description: "Premium womenswear".to_string(),
+        },
+    )
+    .expect("brand");
+    let project = create_project(
+        &state,
+        ProjectInput {
+            brand_id: brand.id,
+            title: "Spring Drop Film".to_string(),
+            advertising_goal: "Launch awareness for a lightweight trench".to_string(),
+            duration_seconds: 15,
+        },
+    )
+    .expect("project");
+    generate_brief_understanding(
+        &state,
+        BriefUnderstandingInput {
+            project_id: project.id.clone(),
+            brief_text: "15 second outerwear launch ad".to_string(),
+            product_name: "Lightweight trench".to_string(),
+            category: "outerwear".to_string(),
+            audience: "urban commuters".to_string(),
+            target_platforms: vec!["jimeng_video".to_string(), "grok_video".to_string()],
+            selling_points_text: "water-resistant cotton, soft structure, easy movement"
+                .to_string(),
+            visual_direction: "clean studio walk with close fabric texture".to_string(),
+            constraints_text: "avoid heavy winter styling".to_string(),
+            reference_asset_ids: Vec::new(),
+        },
+    )
+    .expect("understanding");
+    generate_research_report(
+        &state,
+        ResearchReportInput {
+            project_id: project.id.clone(),
+            research_goal: "Find visual references".to_string(),
+            market_focus: "outerwear".to_string(),
+            platform_focus: vec!["jimeng_video".to_string()],
+            source_materials: vec![ResearchSourceInput {
+                title: "Reference note".to_string(),
+                url: "https://example.com/reference".to_string(),
+                source_type: "reference".to_string(),
+                excerpt: "Texture details support premium positioning.".to_string(),
+            }],
+        },
+    )
+    .expect("research");
+    let storyboard = generate_storyboard(
+        &state,
+        StoryboardGenerationInput {
+            project_id: project.id.clone(),
+            user_direction: "Make the opening tactile.".to_string(),
+            preferred_duration_seconds: Some(15),
+            preferred_shot_count: Some(5),
+        },
+    )
+    .expect("storyboard");
+    generate_prompt_packages(
+        &state,
+        PromptGenerationInput {
+            project_id: project.id.clone(),
+            shot_ids: vec![storyboard.shots[0].shot.id.clone()],
+            image_brief: "Full-body studio model photo.".to_string(),
+            target_platforms: vec!["jimeng_video".into(), "gpt_image_2".into()],
+            user_direction: "Make output production-ready.".into(),
+        },
+    )
+    .expect("prompt generation");
+
+    let generated = generate_delivery_report(
+        &state,
+        DeliveryReportGenerationInput {
+            project_id: project.id.clone(),
+            user_direction: "Prepare final handoff.".into(),
+        },
+    )
+    .expect("generate report");
+    assert_eq!(
+        generated.agent_run.runtime_mode,
+        "local_delivery_report_bridge"
+    );
+
+    let updated = update_delivery_report(
+        &state,
+        DeliveryReportUpdateInput {
+            id: generated.report.id.clone(),
+            title: "Edited Delivery Report".into(),
+            markdown: "# Edited Delivery Report".into(),
+            sections_json: generated.report.sections_json.clone(),
+            is_final_candidate: true,
+        },
+    )
+    .expect("update");
+    assert_eq!(updated.title, "Edited Delivery Report");
+    assert!(updated.is_final_candidate);
+
+    let reports = list_delivery_reports(&state, project.id.clone()).expect("reports");
+    assert_eq!(reports.len(), 1);
+    assert_eq!(reports[0].id, updated.id);
+
+    let preview = preview_delivery_package(
+        &state,
+        DeliveryPackagePreviewInput {
+            project_id: project.id.clone(),
+            delivery_report_id: Some(updated.id.clone()),
+        },
+    )
+    .expect("preview");
+    assert!(preview
+        .delivery_report_file_name
+        .ends_with("-delivery-report.md"));
+    assert_eq!(preview.included_prompt_packages_count, 2);
+
+    let exported = export_project(
+        &state,
+        ProjectExportCommandInput {
+            project_id: project.id,
+            export_dir: app.temp_dir.path().join("exports"),
+            delivery_report_id: Some(updated.id),
+        },
+    )
+    .expect("export");
+    let report_path = exported
+        .delivery_report_path
+        .expect("delivery report export path");
+    assert_eq!(
+        std::fs::read_to_string(report_path).expect("read exported report"),
+        "# Edited Delivery Report"
+    );
 }
 
 #[test]

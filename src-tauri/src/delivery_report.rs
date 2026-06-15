@@ -114,6 +114,28 @@ pub fn generate_delivery_report(
     })
 }
 
+pub fn preview_delivery_package(
+    repo: &Repository<'_>,
+    project_id: &str,
+    delivery_report_id: Option<&str>,
+) -> JoiResult<DeliveryPackagePreview> {
+    if let Some(report_id) = delivery_report_id {
+        let report = repo.get_delivery_report(report_id)?;
+        if report.project_id != project_id {
+            return Err(crate::error::JoiError::Package(format!(
+                "project package delivery report {} does not belong to project {}",
+                report.id, project_id
+            )));
+        }
+    }
+
+    let context = read_delivery_context(repo, project_id)?;
+    let mut preview = build_package_preview(&context);
+    let sections = build_section_statuses(&context);
+    preview.warnings = package_warnings(&sections, &preview);
+    Ok(preview)
+}
+
 fn read_delivery_context(repo: &Repository<'_>, project_id: &str) -> JoiResult<DeliveryContext> {
     let project = repo.get_project(project_id)?;
     let brand = repo.get_brand(&project.brand_id)?;

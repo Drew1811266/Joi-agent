@@ -9,12 +9,17 @@ use crate::agent_runtime::{
 };
 use crate::assets::{AssetImportInput, AssetService};
 use crate::db::Database;
+use crate::delivery_report::{
+    generate_delivery_report as generate_delivery_report_service,
+    preview_delivery_package as preview_delivery_package_service, DeliveryPackagePreview,
+    DeliveryReportGenerationInput, DeliveryReportGenerationResult,
+};
 use crate::error::{JoiError, JoiResult};
 use crate::hermes_bridge::{inspect_hermes_runtime, AgentRuntimeStatus, HermesRuntimeConfig};
 use crate::memory_curation::{curate_memory_candidates, MemoryCurationInput, MemoryCurationResult};
 use crate::models::{
-    AgentRun, AgentRunEvent, Asset, Brand, CreativeDirection, MemoryEntry, ProductUnderstanding,
-    Project, ProjectVersion, ResearchReport,
+    AgentRun, AgentRunEvent, Asset, Brand, CreativeDirection, DeliveryReport, MemoryEntry,
+    ProductUnderstanding, Project, ProjectVersion, ResearchReport,
 };
 use crate::project_package::{ProjectExportInput, ProjectImportInput, ProjectPackageService};
 use crate::prompt_adapter::{
@@ -23,8 +28,9 @@ use crate::prompt_adapter::{
     PromptPackageView,
 };
 use crate::repositories::{
-    AssetCreate, BrandCreate, BrandUpdate, MemoryEntryCreate, MemoryStatusUpdate, ProjectCreate,
-    ProjectUpdate, PromptPackageUpdate, Repository, ShotUpdate, StoryboardWithShots,
+    AssetCreate, BrandCreate, BrandUpdate, DeliveryReportUpdate, MemoryEntryCreate,
+    MemoryStatusUpdate, ProjectCreate, ProjectUpdate, PromptPackageUpdate, Repository, ShotUpdate,
+    StoryboardWithShots,
 };
 use crate::research::{
     generate_research_report as generate_research_report_service, ResearchReportInput,
@@ -107,12 +113,15 @@ pub struct RestoreVersionInput {
 pub struct ProjectExportCommandInput {
     pub project_id: String,
     pub export_dir: PathBuf,
+    #[serde(default)]
+    pub delivery_report_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ProjectExportCommandResult {
     pub project_json_path: PathBuf,
     pub assets_dir: PathBuf,
+    pub delivery_report_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -170,6 +179,21 @@ pub struct PromptPackageUpdateInput {
     pub negative_prompt: String,
     pub parameters_json: serde_json::Value,
     pub is_locked: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DeliveryReportUpdateInput {
+    pub id: String,
+    pub title: String,
+    pub markdown: String,
+    pub sections_json: serde_json::Value,
+    pub is_final_candidate: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DeliveryPackagePreviewInput {
+    pub project_id: String,
+    pub delivery_report_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -388,6 +412,38 @@ pub fn joi_update_prompt_package(
 }
 
 #[tauri::command(rename_all = "snake_case")]
+pub fn joi_generate_delivery_report(
+    state: State<'_, AppState>,
+    input: DeliveryReportGenerationInput,
+) -> JoiResult<DeliveryReportGenerationResult> {
+    generate_delivery_report(state.inner(), input)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn joi_list_delivery_reports(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> JoiResult<Vec<DeliveryReport>> {
+    list_delivery_reports(state.inner(), project_id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn joi_update_delivery_report(
+    state: State<'_, AppState>,
+    input: DeliveryReportUpdateInput,
+) -> JoiResult<DeliveryReport> {
+    update_delivery_report(state.inner(), input)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn joi_preview_delivery_package(
+    state: State<'_, AppState>,
+    input: DeliveryPackagePreviewInput,
+) -> JoiResult<DeliveryPackagePreview> {
+    preview_delivery_package(state.inner(), input)
+}
+
+#[tauri::command(rename_all = "snake_case")]
 pub fn joi_generate_brief_understanding(
     state: State<'_, AppState>,
     input: BriefUnderstandingInput,
@@ -570,10 +626,12 @@ pub fn export_project(
         .export_project(ProjectExportInput {
             project_id: input.project_id,
             export_dir: input.export_dir,
+            delivery_report_id: input.delivery_report_id,
         })?;
     Ok(ProjectExportCommandResult {
         project_json_path: result.project_json_path,
         assets_dir: result.assets_dir,
+        delivery_report_path: result.delivery_report_path,
     })
 }
 
@@ -731,6 +789,53 @@ pub fn update_prompt_package(
         is_locked: input.is_locked,
     })?;
     Ok(prompt_package_view(package))
+}
+
+pub fn generate_delivery_report(
+    state: &AppState,
+    input: DeliveryReportGenerationInput,
+) -> JoiResult<DeliveryReportGenerationResult> {
+    let runtime_status = get_agent_runtime_status(state)?;
+    let db = lock_db(state)?;
+    generate_delivery_report_service(
+        &Repository::new(db.connection()),
+        input,
+        runtime_status.hermes_version,
+    )
+}
+
+pub fn list_delivery_reports(
+    state: &AppState,
+    project_id: String,
+) -> JoiResult<Vec<DeliveryReport>> {
+    let db = lock_db(state)?;
+    Repository::new(db.connection()).list_delivery_reports(&project_id)
+}
+
+pub fn update_delivery_report(
+    state: &AppState,
+    input: DeliveryReportUpdateInput,
+) -> JoiResult<DeliveryReport> {
+    let db = lock_db(state)?;
+    Repository::new(db.connection()).update_delivery_report(DeliveryReportUpdate {
+        id: input.id,
+        title: input.title,
+        markdown: input.markdown,
+        sections_json: input.sections_json,
+        is_final_candidate: input.is_final_candidate,
+    })
+}
+
+pub fn preview_delivery_package(
+    state: &AppState,
+    input: DeliveryPackagePreviewInput,
+) -> JoiResult<DeliveryPackagePreview> {
+    let db = lock_db(state)?;
+    preview_delivery_package_service(
+        &Repository::new(db.connection()),
+        &input.project_id,
+        input.delivery_report_id.as_deref(),
+    )
 }
 
 pub fn generate_brief_understanding(

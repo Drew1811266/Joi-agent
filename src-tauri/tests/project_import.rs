@@ -36,6 +36,7 @@ fn imports_exported_project_package() {
     .export_project(ProjectExportInput {
         project_id: source_project.id.clone(),
         export_dir,
+        delivery_report_id: None,
     })
     .expect("export project");
 

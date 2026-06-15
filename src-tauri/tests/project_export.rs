@@ -9,8 +9,10 @@ use joi_agent_lib::error::JoiError;
 use joi_agent_lib::project_package::{
     slugify_project_title, ProjectExportInput, ProjectPackageService,
 };
-use joi_agent_lib::repositories::{AssetCreate, BrandCreate, ProjectCreate, Repository};
-use serde_json::Value;
+use joi_agent_lib::repositories::{
+    AssetCreate, BrandCreate, DeliveryReportCreate, ProjectCreate, Repository,
+};
+use serde_json::{json, Value};
 
 const SOURCE_BYTES: &[u8] = b"exported asset bytes";
 
@@ -51,6 +53,7 @@ fn exports_project_json_and_assets_folder() {
         .export_project(ProjectExportInput {
             project_id: project.id.clone(),
             export_dir: export_dir.clone(),
+            delivery_report_id: None,
         })
         .expect("export project");
 
@@ -85,6 +88,90 @@ fn exports_project_json_and_assets_folder() {
 }
 
 #[test]
+fn exports_delivery_report_markdown_with_project_package() {
+    let app = TestApp::new();
+    let db = migrated_database(&app);
+    let repo = Repository::new(db.connection());
+    let project_id = create_project(&repo, "Launch Film");
+    let report = repo
+        .create_delivery_report(DeliveryReportCreate {
+            project_id: project_id.clone(),
+            title: "Launch Film Delivery Report".into(),
+            markdown: "# Launch Film Delivery Report".into(),
+            sections_json: json!({
+                "format_version": "joi.delivery_report_sections.v1",
+                "sections": []
+            }),
+            is_final_candidate: true,
+        })
+        .expect("report");
+    let export_dir = app.temp_dir.path().join("exports");
+
+    let result =
+        ProjectPackageService::new(db.connection(), app.temp_dir.path().join("managed-assets"))
+            .export_project(ProjectExportInput {
+                project_id,
+                export_dir: export_dir.clone(),
+                delivery_report_id: Some(report.id.clone()),
+            })
+            .expect("export");
+
+    let report_path = result.delivery_report_path.expect("report path");
+    assert_eq!(
+        report_path.file_name().and_then(|name| name.to_str()),
+        Some("launch-film-delivery-report.md")
+    );
+    assert_eq!(
+        std::fs::read_to_string(&report_path).expect("read report"),
+        "# Launch Film Delivery Report"
+    );
+
+    let package: Value = serde_json::from_slice(
+        &std::fs::read(&result.project_json_path).expect("read project package"),
+    )
+    .expect("parse project package");
+    assert_eq!(package["delivery_report"]["id"], report.id);
+    assert_eq!(
+        package["delivery_report"]["markdown_file"],
+        "launch-film-delivery-report.md"
+    );
+}
+
+#[test]
+fn rejects_delivery_report_export_for_different_project() {
+    let app = TestApp::new();
+    let db = migrated_database(&app);
+    let repo = Repository::new(db.connection());
+    let project_id = create_project(&repo, "Launch Film");
+    let other_project_id = create_project(&repo, "Other Film");
+    let report = repo
+        .create_delivery_report(DeliveryReportCreate {
+            project_id: other_project_id,
+            title: "Other Film Delivery Report".into(),
+            markdown: "# Other Film Delivery Report".into(),
+            sections_json: json!({
+                "format_version": "joi.delivery_report_sections.v1",
+                "sections": []
+            }),
+            is_final_candidate: true,
+        })
+        .expect("report");
+    let export_dir = app.temp_dir.path().join("exports");
+
+    let error =
+        ProjectPackageService::new(db.connection(), app.temp_dir.path().join("managed-assets"))
+            .export_project(ProjectExportInput {
+                project_id,
+                export_dir: export_dir.clone(),
+                delivery_report_id: Some(report.id),
+            })
+            .expect_err("reject mismatched report");
+
+    assert_package_integrity_error(error, "does not belong");
+    assert!(!export_dir.join("launch-film.joi-project.json").exists());
+}
+
+#[test]
 fn slugifies_project_titles_stably() {
     assert_eq!(slugify_project_title("Launch Film"), "launch-film");
     assert_eq!(slugify_project_title("  Launch___Film!!! "), "launch-film");
@@ -115,6 +202,7 @@ fn rejects_export_when_managed_asset_source_is_missing() {
         .export_project(ProjectExportInput {
             project_id,
             export_dir: export_dir.clone(),
+            delivery_report_id: None,
         })
         .expect_err("reject missing managed asset source");
 
@@ -139,6 +227,7 @@ fn rejects_export_when_package_json_already_exists() {
         .export_project(ProjectExportInput {
             project_id,
             export_dir,
+            delivery_report_id: None,
         })
         .expect_err("reject existing project package");
 
@@ -167,6 +256,7 @@ fn rejects_export_when_target_asset_file_already_exists() {
         .export_project(ProjectExportInput {
             project_id,
             export_dir: export_dir.clone(),
+            delivery_report_id: None,
         })
         .expect_err("reject existing target asset");
 
