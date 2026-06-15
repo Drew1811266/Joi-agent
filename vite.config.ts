@@ -12,7 +12,9 @@ export default defineConfig({
     strictPort: true
   },
   test: {
+    exclude: [".external/**", ".worktrees/**", "dist/**", "node_modules/**"],
     environment: "jsdom",
+    include: ["src/**/*.{test,spec}.{ts,tsx}"],
     setupFiles: ["src/test/setup.ts"]
   }
 });
