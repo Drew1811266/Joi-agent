@@ -3,7 +3,10 @@ mod common;
 use common::TestApp;
 use joi_agent_lib::db::Database;
 use joi_agent_lib::error::JoiError;
-use joi_agent_lib::repositories::{BrandCreate, MemoryEntryCreate, ProjectCreate, Repository};
+use joi_agent_lib::repositories::{
+    BrandCreate, MemoryCandidateCreate, MemoryEntryCreate, MemoryStatusUpdate, ProjectCreate,
+    Repository,
+};
 
 fn open_repo(app: &TestApp) -> Database {
     let db = Database::open(&app.db_path).expect("open database");
@@ -47,6 +50,103 @@ fn creates_and_lists_brand_scoped_memory() {
 
     assert_eq!(memories.len(), 1);
     assert_eq!(memories[0].id, memory.id);
+}
+
+#[test]
+fn creates_memory_candidate_with_source_trace_and_confidence() {
+    let app = TestApp::new();
+    let db = open_repo(&app);
+    let repo = Repository::new(db.connection());
+    let brand = repo
+        .create_brand(BrandCreate {
+            name: "Atelier Joi".into(),
+            description: String::new(),
+        })
+        .expect("brand");
+    let project = repo
+        .create_project(ProjectCreate {
+            brand_id: brand.id.clone(),
+            title: "Campaign".into(),
+            advertising_goal: String::new(),
+            duration_seconds: 15,
+        })
+        .expect("project");
+
+    let memory = repo
+        .create_memory_candidate(MemoryCandidateCreate {
+            scope: "project".into(),
+            brand_id: Some(brand.id),
+            project_id: Some(project.id.clone()),
+            content: "Use tactile close-ups as visual proof.".into(),
+            source: "research report".into(),
+            source_entity_type: "research_report".into(),
+            source_entity_id: "research-1".into(),
+            confidence: 0.72,
+        })
+        .expect("memory candidate");
+
+    assert_eq!(memory.scope, "project");
+    assert_eq!(memory.project_id.as_deref(), Some(project.id.as_str()));
+    assert_eq!(memory.status, "proposed");
+    assert_eq!(memory.source, "research report");
+    assert_eq!(memory.source_entity_type, "research_report");
+    assert_eq!(memory.source_entity_id, "research-1");
+    assert_eq!(memory.confidence, 0.72);
+}
+
+#[test]
+fn updates_memory_status_to_accepted_or_rejected() {
+    let app = TestApp::new();
+    let db = open_repo(&app);
+    let repo = Repository::new(db.connection());
+    let brand = repo
+        .create_brand(BrandCreate {
+            name: "Atelier Joi".into(),
+            description: String::new(),
+        })
+        .expect("brand");
+
+    let memory = repo
+        .create_memory_entry(MemoryEntryCreate {
+            scope: "brand".into(),
+            brand_id: Some(brand.id),
+            project_id: None,
+            content: "Prefer clean studio lighting".into(),
+            source: "user note".into(),
+        })
+        .expect("memory");
+
+    let accepted = repo
+        .update_memory_entry_status(MemoryStatusUpdate {
+            id: memory.id.clone(),
+            status: "accepted".into(),
+        })
+        .expect("accept memory");
+    assert_eq!(accepted.status, "accepted");
+
+    let rejected = repo
+        .update_memory_entry_status(MemoryStatusUpdate {
+            id: memory.id.clone(),
+            status: "rejected".into(),
+        })
+        .expect("reject memory");
+    assert_eq!(rejected.status, "rejected");
+
+    let invalid_status = repo
+        .update_memory_entry_status(MemoryStatusUpdate {
+            id: memory.id.clone(),
+            status: "archived".into(),
+        })
+        .expect_err("reject invalid status");
+    assert!(matches!(invalid_status, JoiError::Validation(_)));
+
+    let missing = repo
+        .update_memory_entry_status(MemoryStatusUpdate {
+            id: "missing-memory".into(),
+            status: "accepted".into(),
+        })
+        .expect_err("missing memory");
+    assert!(matches!(missing, JoiError::NotFound(message) if message == "memory missing-memory"));
 }
 
 #[test]

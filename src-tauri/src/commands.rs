@@ -11,14 +11,15 @@ use crate::assets::{AssetImportInput, AssetService};
 use crate::db::Database;
 use crate::error::{JoiError, JoiResult};
 use crate::hermes_bridge::{inspect_hermes_runtime, AgentRuntimeStatus, HermesRuntimeConfig};
+use crate::memory_curation::{curate_memory_candidates, MemoryCurationInput, MemoryCurationResult};
 use crate::models::{
     AgentRun, AgentRunEvent, Asset, Brand, CreativeDirection, MemoryEntry, ProductUnderstanding,
     Project, ProjectVersion, ResearchReport,
 };
 use crate::project_package::{ProjectExportInput, ProjectImportInput, ProjectPackageService};
 use crate::repositories::{
-    AssetCreate, BrandCreate, BrandUpdate, MemoryEntryCreate, ProjectCreate, ProjectUpdate,
-    Repository,
+    AssetCreate, BrandCreate, BrandUpdate, MemoryEntryCreate, MemoryStatusUpdate, ProjectCreate,
+    ProjectUpdate, Repository,
 };
 use crate::research::{
     generate_research_report as generate_research_report_service, ResearchReportInput,
@@ -128,6 +129,12 @@ pub struct MemoryListInput {
     pub scope: String,
     pub brand_id: Option<String>,
     pub project_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MemoryStatusInput {
+    pub id: String,
+    pub status: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -266,6 +273,22 @@ pub fn joi_list_memory_entries(
     input: MemoryListInput,
 ) -> JoiResult<Vec<MemoryEntry>> {
     list_memory_entries(state.inner(), input)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn joi_generate_memory_candidates(
+    state: State<'_, AppState>,
+    input: MemoryCurationInput,
+) -> JoiResult<MemoryCurationResult> {
+    generate_memory_candidates(state.inner(), input)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn joi_update_memory_status(
+    state: State<'_, AppState>,
+    input: MemoryStatusInput,
+) -> JoiResult<MemoryEntry> {
+    update_memory_status(state.inner(), input)
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -493,6 +516,27 @@ pub fn list_memory_entries(
         input.brand_id.as_deref(),
         input.project_id.as_deref(),
     )
+}
+
+pub fn generate_memory_candidates(
+    state: &AppState,
+    input: MemoryCurationInput,
+) -> JoiResult<MemoryCurationResult> {
+    let runtime_status = get_agent_runtime_status(state)?;
+    let db = lock_db(state)?;
+    curate_memory_candidates(
+        &Repository::new(db.connection()),
+        input,
+        runtime_status.hermes_version,
+    )
+}
+
+pub fn update_memory_status(state: &AppState, input: MemoryStatusInput) -> JoiResult<MemoryEntry> {
+    let db = lock_db(state)?;
+    Repository::new(db.connection()).update_memory_entry_status(MemoryStatusUpdate {
+        id: input.id,
+        status: input.status,
+    })
 }
 
 pub fn generate_brief_understanding(

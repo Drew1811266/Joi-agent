@@ -5,6 +5,7 @@ pub mod commands;
 pub mod db;
 pub mod error;
 pub mod hermes_bridge;
+pub mod memory_curation;
 pub mod models;
 pub mod project_package;
 pub mod repositories;
@@ -57,6 +58,8 @@ pub fn run() {
             commands::joi_import_project,
             commands::joi_create_memory_entry,
             commands::joi_list_memory_entries,
+            commands::joi_generate_memory_candidates,
+            commands::joi_update_memory_status,
             commands::joi_generate_brief_understanding,
             commands::joi_list_product_understandings,
             commands::joi_list_creative_directions,

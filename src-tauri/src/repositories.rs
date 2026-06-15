@@ -119,6 +119,24 @@ pub struct MemoryEntryCreate {
 }
 
 #[derive(Debug, Clone)]
+pub struct MemoryCandidateCreate {
+    pub scope: String,
+    pub brand_id: Option<String>,
+    pub project_id: Option<String>,
+    pub content: String,
+    pub source: String,
+    pub source_entity_type: String,
+    pub source_entity_id: String,
+    pub confidence: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct MemoryStatusUpdate {
+    pub id: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct AgentRunCreate {
     pub project_id: String,
     pub user_goal: String,
@@ -673,40 +691,11 @@ impl<'a> Repository<'a> {
     pub fn create_memory_entry(&self, input: MemoryEntryCreate) -> JoiResult<MemoryEntry> {
         let scope = MemoryScope::try_from(input.scope.as_str())?;
         validate_required_text("Memory content", &input.content)?;
-
-        match scope {
-            MemoryScope::User => {
-                if input.brand_id.is_some() || input.project_id.is_some() {
-                    return Err(JoiError::Validation(
-                        "user memory must not include brand_id or project_id".to_string(),
-                    ));
-                }
-            }
-            MemoryScope::Brand => {
-                if input.project_id.is_some() {
-                    return Err(JoiError::Validation(
-                        "brand memory must not include project_id".to_string(),
-                    ));
-                }
-                let brand_id = input.brand_id.as_deref().ok_or_else(|| {
-                    JoiError::Validation("brand memory requires brand_id".to_string())
-                })?;
-                self.get_brand(brand_id)?;
-            }
-            MemoryScope::Project => {
-                let project_id = input.project_id.as_deref().ok_or_else(|| {
-                    JoiError::Validation("project memory requires project_id".to_string())
-                })?;
-                let project = self.get_project(project_id)?;
-                if let Some(brand_id) = input.brand_id.as_deref() {
-                    if brand_id != project.brand_id {
-                        return Err(JoiError::Validation(
-                            "project memory brand_id must match project brand".to_string(),
-                        ));
-                    }
-                }
-            }
-        }
+        self.validate_memory_target(
+            scope,
+            input.brand_id.as_deref(),
+            input.project_id.as_deref(),
+        )?;
 
         let now = Utc::now();
         let memory = MemoryEntry {
@@ -744,6 +733,130 @@ impl<'a> Repository<'a> {
             ],
         )?;
         Ok(memory)
+    }
+
+    pub fn create_memory_candidate(&self, input: MemoryCandidateCreate) -> JoiResult<MemoryEntry> {
+        let scope = MemoryScope::try_from(input.scope.as_str())?;
+        validate_required_text("Memory content", &input.content)?;
+        if !(0.0..=1.0).contains(&input.confidence) {
+            return Err(JoiError::Validation(
+                "Memory confidence must be between 0.0 and 1.0".to_string(),
+            ));
+        }
+        self.validate_memory_target(
+            scope,
+            input.brand_id.as_deref(),
+            input.project_id.as_deref(),
+        )?;
+
+        let now = Utc::now();
+        let memory = MemoryEntry {
+            id: new_id(),
+            scope: scope.as_str().to_string(),
+            brand_id: input.brand_id,
+            project_id: input.project_id,
+            content: input.content.trim().to_string(),
+            source: input.source.trim().to_string(),
+            source_entity_type: input.source_entity_type.trim().to_string(),
+            source_entity_id: input.source_entity_id.trim().to_string(),
+            confidence: input.confidence,
+            status: MemoryStatus::Proposed.as_str().to_string(),
+            created_at: now,
+            updated_at: now,
+        };
+        self.connection.execute(
+            "INSERT INTO memory_entries (
+                id, scope, brand_id, project_id, content, source, source_entity_type,
+                source_entity_id, confidence, status, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            params![
+                memory.id,
+                memory.scope,
+                memory.brand_id,
+                memory.project_id,
+                memory.content,
+                memory.source,
+                memory.source_entity_type,
+                memory.source_entity_id,
+                memory.confidence,
+                memory.status,
+                memory.created_at.to_rfc3339(),
+                memory.updated_at.to_rfc3339()
+            ],
+        )?;
+        Ok(memory)
+    }
+
+    pub fn get_memory_entry(&self, id: &str) -> JoiResult<MemoryEntry> {
+        self.connection
+            .query_row(
+                "SELECT id, scope, brand_id, project_id, content, source, source_entity_type,
+                        source_entity_id, confidence, status, created_at, updated_at
+                 FROM memory_entries WHERE id = ?1",
+                params![id],
+                map_memory_entry,
+            )
+            .map_err(|err| match err {
+                rusqlite::Error::QueryReturnedNoRows => {
+                    JoiError::NotFound(format!("memory {}", id))
+                }
+                other => other.into(),
+            })
+    }
+
+    pub fn update_memory_entry_status(&self, input: MemoryStatusUpdate) -> JoiResult<MemoryEntry> {
+        let status = MemoryStatus::try_from(input.status.as_str())?;
+        let now = Utc::now();
+        let affected = self.connection.execute(
+            "UPDATE memory_entries SET status = ?1, updated_at = ?2 WHERE id = ?3",
+            params![status.as_str(), now.to_rfc3339(), input.id],
+        )?;
+        if affected == 0 {
+            return Err(JoiError::NotFound(format!("memory {}", input.id)));
+        }
+        self.get_memory_entry(&input.id)
+    }
+
+    fn validate_memory_target(
+        &self,
+        scope: MemoryScope,
+        brand_id: Option<&str>,
+        project_id: Option<&str>,
+    ) -> JoiResult<()> {
+        match scope {
+            MemoryScope::User => {
+                if brand_id.is_some() || project_id.is_some() {
+                    return Err(JoiError::Validation(
+                        "user memory must not include brand_id or project_id".to_string(),
+                    ));
+                }
+            }
+            MemoryScope::Brand => {
+                if project_id.is_some() {
+                    return Err(JoiError::Validation(
+                        "brand memory must not include project_id".to_string(),
+                    ));
+                }
+                let brand_id = brand_id.ok_or_else(|| {
+                    JoiError::Validation("brand memory requires brand_id".to_string())
+                })?;
+                self.get_brand(brand_id)?;
+            }
+            MemoryScope::Project => {
+                let project_id = project_id.ok_or_else(|| {
+                    JoiError::Validation("project memory requires project_id".to_string())
+                })?;
+                let project = self.get_project(project_id)?;
+                if let Some(brand_id) = brand_id {
+                    if brand_id != project.brand_id {
+                        return Err(JoiError::Validation(
+                            "project memory brand_id must match project brand".to_string(),
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn create_agent_run(&self, input: AgentRunCreate) -> JoiResult<AgentRun> {
