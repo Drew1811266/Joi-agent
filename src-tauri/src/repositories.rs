@@ -4,9 +4,9 @@ use serde_json::{json, Value};
 
 use crate::error::{JoiError, JoiResult};
 use crate::models::{
-    new_id, AgentRun, AgentRunEvent, Asset, AssetKind, Brand, CreativeDirection, MemoryEntry,
-    MemoryScope, MemoryStatus, ProductUnderstanding, Project, ProjectVersion, PromptModality,
-    PromptPackage, PromptPlatform, ResearchReport, Shot, Storyboard,
+    new_id, AgentRun, AgentRunEvent, Asset, AssetKind, Brand, CreativeDirection, DeliveryReport,
+    MemoryEntry, MemoryScope, MemoryStatus, ProductUnderstanding, Project, ProjectVersion,
+    PromptModality, PromptPackage, PromptPlatform, ResearchReport, Shot, Storyboard,
 };
 use crate::validation::{validate_non_negative, validate_prompt_modality, validate_required_text};
 
@@ -159,6 +159,24 @@ pub struct PromptPackageUpdate {
     pub negative_prompt: String,
     pub parameters_json: Value,
     pub is_locked: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct DeliveryReportCreate {
+    pub project_id: String,
+    pub title: String,
+    pub markdown: String,
+    pub sections_json: Value,
+    pub is_final_candidate: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct DeliveryReportUpdate {
+    pub id: String,
+    pub title: String,
+    pub markdown: String,
+    pub sections_json: Value,
+    pub is_final_candidate: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -933,6 +951,84 @@ impl<'a> Repository<'a> {
         self.get_prompt_package(&input.id)
     }
 
+    pub fn create_delivery_report(&self, input: DeliveryReportCreate) -> JoiResult<DeliveryReport> {
+        validate_required_text("Delivery report title", &input.title)?;
+        validate_required_text("Delivery report markdown", &input.markdown)?;
+        validate_delivery_report_sections(&input.sections_json)?;
+        self.get_project(&input.project_id)?;
+
+        let now = Utc::now();
+        let report = DeliveryReport {
+            id: new_id(),
+            project_id: input.project_id,
+            title: input.title.trim().to_string(),
+            markdown: input.markdown.trim().to_string(),
+            sections_json: input.sections_json,
+            is_final_candidate: input.is_final_candidate,
+            created_at: now,
+            updated_at: now,
+        };
+        self.connection.execute(
+            "INSERT INTO delivery_reports (
+                id, project_id, title, markdown, sections_json, is_final_candidate,
+                created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                report.id,
+                report.project_id,
+                report.title,
+                report.markdown,
+                report.sections_json.to_string(),
+                if report.is_final_candidate { 1 } else { 0 },
+                report.created_at.to_rfc3339(),
+                report.updated_at.to_rfc3339()
+            ],
+        )?;
+        Ok(report)
+    }
+
+    pub fn get_delivery_report(&self, id: &str) -> JoiResult<DeliveryReport> {
+        self.connection
+            .query_row(
+                "SELECT id, project_id, title, markdown, sections_json, is_final_candidate,
+                        created_at, updated_at
+                 FROM delivery_reports WHERE id = ?1",
+                params![id],
+                map_delivery_report,
+            )
+            .map_err(|err| match err {
+                rusqlite::Error::QueryReturnedNoRows => {
+                    JoiError::NotFound(format!("delivery report {}", id))
+                }
+                other => other.into(),
+            })
+    }
+
+    pub fn update_delivery_report(&self, input: DeliveryReportUpdate) -> JoiResult<DeliveryReport> {
+        validate_required_text("Delivery report title", &input.title)?;
+        validate_required_text("Delivery report markdown", &input.markdown)?;
+        validate_delivery_report_sections(&input.sections_json)?;
+        let now = Utc::now();
+        let affected = self.connection.execute(
+            "UPDATE delivery_reports
+             SET title = ?1, markdown = ?2, sections_json = ?3,
+                 is_final_candidate = ?4, updated_at = ?5
+             WHERE id = ?6",
+            params![
+                input.title.trim(),
+                input.markdown.trim(),
+                input.sections_json.to_string(),
+                if input.is_final_candidate { 1 } else { 0 },
+                now.to_rfc3339(),
+                input.id
+            ],
+        )?;
+        if affected == 0 {
+            return Err(JoiError::NotFound(format!("delivery report {}", input.id)));
+        }
+        self.get_delivery_report(&input.id)
+    }
+
     pub fn create_memory_entry(&self, input: MemoryEntryCreate) -> JoiResult<MemoryEntry> {
         let scope = MemoryScope::try_from(input.scope.as_str())?;
         validate_required_text("Memory content", &input.content)?;
@@ -1260,6 +1356,16 @@ impl<'a> Repository<'a> {
         collect_rows(rows)
     }
 
+    pub fn list_delivery_reports(&self, project_id: &str) -> JoiResult<Vec<DeliveryReport>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, project_id, title, markdown, sections_json, is_final_candidate,
+                    created_at, updated_at
+             FROM delivery_reports WHERE project_id = ?1 ORDER BY created_at ASC",
+        )?;
+        let rows = statement.query_map(params![project_id], map_delivery_report)?;
+        collect_rows(rows)
+    }
+
     pub fn list_assets(&self, project_id: &str) -> JoiResult<Vec<Asset>> {
         let mut statement = self.connection.prepare(
             "SELECT id, project_id, kind, display_name, relative_path, source_uri, mime_type,
@@ -1392,6 +1498,23 @@ fn update_shot_metadata(existing: Value, garment_focus: &str, transition: &str) 
     metadata
 }
 
+fn validate_delivery_report_sections(value: &Value) -> JoiResult<()> {
+    if value.get("format_version").and_then(Value::as_str)
+        != Some("joi.delivery_report_sections.v1")
+    {
+        return Err(JoiError::Validation(
+            "Delivery report sections must use format_version joi.delivery_report_sections.v1"
+                .to_string(),
+        ));
+    }
+    if !value.get("sections").is_some_and(Value::is_array) {
+        return Err(JoiError::Validation(
+            "Delivery report sections must include a sections array".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 fn parse_time(value: String, column_index: usize) -> rusqlite::Result<chrono::DateTime<Utc>> {
     chrono::DateTime::parse_from_rfc3339(&value)
         .map(|value| value.with_timezone(&Utc))
@@ -1522,6 +1645,19 @@ fn map_prompt_package(row: &rusqlite::Row<'_>) -> rusqlite::Result<PromptPackage
         is_locked: parse_bool(row.get(8)?, 8)?,
         created_at: parse_time(row.get(9)?, 9)?,
         updated_at: parse_time(row.get(10)?, 10)?,
+    })
+}
+
+fn map_delivery_report(row: &rusqlite::Row<'_>) -> rusqlite::Result<DeliveryReport> {
+    Ok(DeliveryReport {
+        id: row.get(0)?,
+        project_id: row.get(1)?,
+        title: row.get(2)?,
+        markdown: row.get(3)?,
+        sections_json: parse_json(row.get(4)?, 4)?,
+        is_final_candidate: parse_bool(row.get(5)?, 5)?,
+        created_at: parse_time(row.get(6)?, 6)?,
+        updated_at: parse_time(row.get(7)?, 7)?,
     })
 }
 

@@ -22,6 +22,7 @@ fn migration_creates_full_phase1_schema() {
         "storyboards",
         "shots",
         "prompt_packages",
+        "delivery_reports",
         "project_versions",
         "memory_entries",
         "agent_runs",
@@ -30,6 +31,28 @@ fn migration_creates_full_phase1_schema() {
         assert!(
             tables.contains(&expected.to_string()),
             "missing table {expected}"
+        );
+    }
+}
+
+#[test]
+fn migration_creates_delivery_reports_table() {
+    let db = migrated_in_memory_database();
+    let columns = table_columns(&db, "delivery_reports");
+
+    for expected in [
+        "id",
+        "project_id",
+        "title",
+        "markdown",
+        "sections_json",
+        "is_final_candidate",
+        "created_at",
+        "updated_at",
+    ] {
+        assert!(
+            columns.contains(&expected.to_string()),
+            "missing delivery_reports column {expected}"
         );
     }
 }
@@ -164,6 +187,7 @@ fn migration_creates_expected_list_and_foreign_key_indexes() {
         "idx_shots_storyboard_id",
         "idx_prompt_packages_project_id",
         "idx_prompt_packages_shot_id",
+        "idx_delivery_reports_project_id",
         "idx_project_versions_project_id",
         "idx_memory_entries_scope",
         "idx_memory_entries_brand_id",
@@ -245,6 +269,21 @@ fn insert_prompt_package(
          VALUES (?1, ?2, ?3, 'jimeng_video', 'video', ?4, ?4)",
         (id, project_id, shot_id, NOW),
     )
+}
+
+fn table_columns(db: &Database, table: &str) -> Vec<String> {
+    let mut statement = db
+        .connection()
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .expect("prepare table info query");
+    let rows = statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .expect("query table info");
+    let mut columns = Vec::new();
+    for row in rows {
+        columns.push(row.expect("table info row"));
+    }
+    columns
 }
 
 fn index_names(db: &Database) -> Vec<String> {

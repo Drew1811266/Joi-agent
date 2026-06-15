@@ -5,8 +5,9 @@ use common::TestApp;
 use joi_agent_lib::db::Database;
 use joi_agent_lib::error::JoiError;
 use joi_agent_lib::repositories::{
-    AssetCreate, BrandCreate, CreativeDirectionCreate, ProductUnderstandingCreate, ProjectCreate,
-    PromptPackageCreate, Repository, ResearchReportCreate, ShotCreate, StoryboardCreate,
+    AssetCreate, BrandCreate, CreativeDirectionCreate, DeliveryReportCreate,
+    ProductUnderstandingCreate, ProjectCreate, PromptPackageCreate, Repository,
+    ResearchReportCreate, ShotCreate, StoryboardCreate,
 };
 use joi_agent_lib::snapshots::{ProjectSnapshotService, SaveSnapshotInput};
 use rusqlite::params;
@@ -165,6 +166,18 @@ fn creates_project_snapshot_with_related_sections() {
             }),
         })
         .expect("image prompt package");
+    let delivery_report = repo
+        .create_delivery_report(DeliveryReportCreate {
+            project_id: project.id.clone(),
+            title: "Launch Film Delivery Report".into(),
+            markdown: "# Launch Film Delivery Report".into(),
+            sections_json: json!({
+                "format_version": "joi.delivery_report_sections.v1",
+                "sections": [{"id": "prompt_packages", "status": "ready"}]
+            }),
+            is_final_candidate: true,
+        })
+        .expect("delivery report");
     let now = Utc::now().to_rfc3339();
     db.connection()
         .execute(
@@ -202,6 +215,7 @@ fn creates_project_snapshot_with_related_sections() {
                 "creative_direction".into(),
                 "storyboard".into(),
                 "prompt_package".into(),
+                "delivery_report".into(),
                 "memory_entry".into(),
             ],
             created_by: "test".into(),
@@ -250,6 +264,15 @@ fn creates_project_snapshot_with_related_sections() {
         .expect("prompt packages")
         .iter()
         .any(|item| item["id"] == image_prompt.id && item["shot_id"].is_null()));
+    assert_eq!(snapshot["delivery_reports"][0]["id"], delivery_report.id);
+    assert_eq!(
+        snapshot["delivery_reports"][0]["sections_json"]["sections"][0]["id"],
+        "prompt_packages"
+    );
+    assert_eq!(
+        snapshot["delivery_reports"][0]["is_final_candidate"],
+        json!(true)
+    );
     assert_eq!(snapshot["memory_entries"][0]["id"], "memory-1");
     assert_eq!(
         snapshot["memory_entries"][0]["content"],

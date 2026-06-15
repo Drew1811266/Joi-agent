@@ -218,6 +218,18 @@ pub struct PromptPackage {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeliveryReport {
+    pub id: String,
+    pub project_id: String,
+    pub title: String,
+    pub markdown: String,
+    pub sections_json: Value,
+    pub is_final_candidate: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectVersion {
     pub id: String,
     pub project_id: String,

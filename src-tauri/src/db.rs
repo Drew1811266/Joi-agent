@@ -240,6 +240,19 @@ CREATE TABLE IF NOT EXISTS prompt_packages (
   FOREIGN KEY (shot_id) REFERENCES shots(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS delivery_reports (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  markdown TEXT NOT NULL,
+  sections_json TEXT NOT NULL,
+  is_final_candidate INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  CHECK (is_final_candidate IN (0, 1))
+);
+
 CREATE TABLE IF NOT EXISTS project_versions (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
@@ -344,6 +357,7 @@ CREATE INDEX IF NOT EXISTS idx_storyboards_project_id ON storyboards(project_id)
 CREATE INDEX IF NOT EXISTS idx_shots_storyboard_id ON shots(storyboard_id);
 CREATE INDEX IF NOT EXISTS idx_prompt_packages_project_id ON prompt_packages(project_id);
 CREATE INDEX IF NOT EXISTS idx_prompt_packages_shot_id ON prompt_packages(shot_id);
+CREATE INDEX IF NOT EXISTS idx_delivery_reports_project_id ON delivery_reports(project_id);
 CREATE INDEX IF NOT EXISTS idx_project_versions_project_id ON project_versions(project_id);
 CREATE INDEX IF NOT EXISTS idx_memory_entries_scope ON memory_entries(scope);
 CREATE INDEX IF NOT EXISTS idx_memory_entries_brand_id ON memory_entries(brand_id);

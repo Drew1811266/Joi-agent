@@ -4,9 +4,9 @@ use common::TestApp;
 use joi_agent_lib::db::Database;
 use joi_agent_lib::error::JoiError;
 use joi_agent_lib::repositories::{
-    BrandCreate, CreativeDirectionCreate, ProductUnderstandingCreate, ProjectCreate,
-    PromptPackageCreate, PromptPackageUpdate, Repository, ResearchReportCreate, ShotCreate,
-    ShotPlanCreate, ShotUpdate, StoryboardCreate,
+    BrandCreate, CreativeDirectionCreate, DeliveryReportCreate, DeliveryReportUpdate,
+    ProductUnderstandingCreate, ProjectCreate, PromptPackageCreate, PromptPackageUpdate,
+    Repository, ResearchReportCreate, ShotCreate, ShotPlanCreate, ShotUpdate, StoryboardCreate,
 };
 use serde_json::json;
 
@@ -300,6 +300,79 @@ fn updates_prompt_package_text_negative_prompt_parameters_and_lock() {
         updated.parameters_json["missing_fields"],
         json!(["lighting"])
     );
+}
+
+#[test]
+fn creates_lists_and_updates_delivery_reports() {
+    let app = TestApp::new();
+    let db = Database::open(&app.db_path).expect("open database");
+    db.migrate().expect("migrate");
+    let (repo, project_id) = seeded_repo(&db);
+
+    let report = repo
+        .create_delivery_report(DeliveryReportCreate {
+            project_id: project_id.clone(),
+            title: "Launch Film Delivery Report".into(),
+            markdown: "# Launch Film Delivery Report".into(),
+            sections_json: json!({
+                "format_version": "joi.delivery_report_sections.v1",
+                "sections": []
+            }),
+            is_final_candidate: false,
+        })
+        .expect("create report");
+
+    assert_eq!(report.project_id, project_id);
+    assert_eq!(report.title, "Launch Film Delivery Report");
+    assert_eq!(report.markdown, "# Launch Film Delivery Report");
+    assert_eq!(
+        report.sections_json["format_version"],
+        "joi.delivery_report_sections.v1"
+    );
+    assert!(!report.is_final_candidate);
+
+    let reports = repo.list_delivery_reports(&project_id).expect("reports");
+    assert_eq!(reports.len(), 1);
+    assert_eq!(reports[0].id, report.id);
+
+    let updated = repo
+        .update_delivery_report(DeliveryReportUpdate {
+            id: report.id.clone(),
+            title: "Edited Report".into(),
+            markdown: "# Edited Report".into(),
+            sections_json: json!({
+                "format_version": "joi.delivery_report_sections.v1",
+                "sections": [{"id": "project_brief", "status": "complete"}]
+            }),
+            is_final_candidate: true,
+        })
+        .expect("update report");
+
+    assert_eq!(updated.title, "Edited Report");
+    assert_eq!(updated.markdown, "# Edited Report");
+    assert!(updated.is_final_candidate);
+    assert_eq!(updated.sections_json["sections"][0]["id"], "project_brief");
+}
+
+#[test]
+fn rejects_blank_delivery_report_markdown() {
+    let app = TestApp::new();
+    let db = Database::open(&app.db_path).expect("open database");
+    db.migrate().expect("migrate");
+    let (repo, project_id) = seeded_repo(&db);
+
+    let result = repo.create_delivery_report(DeliveryReportCreate {
+        project_id,
+        title: "Report".into(),
+        markdown: "   ".into(),
+        sections_json: json!({
+            "format_version": "joi.delivery_report_sections.v1",
+            "sections": []
+        }),
+        is_final_candidate: false,
+    });
+
+    assert!(result.is_err());
 }
 
 #[test]
