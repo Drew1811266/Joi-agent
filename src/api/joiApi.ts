@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type {
+  ApplyReviewSuggestionInput,
+  ApplyReviewSuggestionResult,
   AgentPlanInput,
   AgentPlanResult,
   AgentRunWithEvents,
@@ -37,6 +39,9 @@ import type {
   ProjectUpdateInput,
   ProjectVersion,
   ProductUnderstanding,
+  QualityReview,
+  QualityReviewGenerationInput,
+  QualityReviewGenerationResult,
   ReferenceAssetInput,
   ResearchReport,
   ResearchReportInput,
@@ -179,6 +184,22 @@ export function listPromptPackages(projectId: string): Promise<PromptPackageView
 
 export function updatePromptPackage(input: PromptPackageUpdateInput): Promise<PromptPackageView> {
   return invoke<PromptPackageView>("joi_update_prompt_package", { input });
+}
+
+export function generateQualityReview(
+  input: QualityReviewGenerationInput,
+): Promise<QualityReviewGenerationResult> {
+  return invoke<QualityReviewGenerationResult>("joi_generate_quality_review", { input });
+}
+
+export function listQualityReviews(projectId: string): Promise<QualityReview[]> {
+  return invoke<QualityReview[]>("joi_list_quality_reviews", { project_id: projectId });
+}
+
+export function applyQualityReviewSuggestion(
+  input: ApplyReviewSuggestionInput,
+): Promise<ApplyReviewSuggestionResult> {
+  return invoke<ApplyReviewSuggestionResult>("joi_apply_quality_review_suggestion", { input });
 }
 
 export function generateDeliveryReport(

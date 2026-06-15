@@ -7,6 +7,7 @@ import { MemoryWorkspace, type MemoryCurationDraft } from "./MemoryWorkspace";
 import { MetricStrip } from "./MetricStrip";
 import { PromptWorkspace, type PromptDraft } from "./PromptWorkspace";
 import { ResearchWorkspace, type ResearchDraft } from "./ResearchWorkspace";
+import { ReviewWorkspace, type ReviewDraft } from "./ReviewWorkspace";
 import { StoryboardWorkspace, type StoryboardDraft } from "./StoryboardWorkspace";
 import type {
   Asset,
@@ -24,6 +25,9 @@ import type {
   ProductUnderstanding,
   Project,
   ProjectVersion,
+  QualityReview,
+  QualityReviewCheck,
+  QualityReviewSuggestion,
   ResearchReport,
   ResearchReportResult,
   ShotUpdateInput,
@@ -33,6 +37,7 @@ import type {
 
 type ProjectWorkspaceProps = {
   activeTab: string;
+  applyingSuggestionId: string | null;
   assets: Asset[];
   brandDraft: {
     name: string;
@@ -46,6 +51,7 @@ type ProjectWorkspaceProps = {
   deliveryReports: DeliveryReport[];
   exportingDeliveryPackage: boolean;
   generatingPrompts: boolean;
+  generatingQualityReview: boolean;
   generatingDeliveryReport: boolean;
   generatingStoryboard: boolean;
   generatingUnderstanding: boolean;
@@ -58,6 +64,7 @@ type ProjectWorkspaceProps = {
   };
   memoryEntries: MemoryEntry[];
   onDeliveryDraftChange: (field: keyof DeliveryDraft, value: string) => void;
+  onApplyReviewSuggestion: (reviewId: string, suggestionId: string) => void;
   onBriefDraftChange: (field: keyof BriefDraft, value: string) => void;
   onBrandDraftChange: (field: "name" | "description", value: string) => void;
   onMemoryCurationDraftChange: (field: keyof MemoryCurationDraft, value: string | boolean) => void;
@@ -66,6 +73,7 @@ type ProjectWorkspaceProps = {
   onPromptDraftChange: (field: keyof PromptDraft, value: string | string[]) => void;
   onProjectDraftChange: (field: "title" | "advertising_goal" | "duration_seconds", value: string) => void;
   onReferenceAssetDraftChange: (field: keyof ReferenceAssetDraft, value: string) => void;
+  onReviewDraftChange: (field: keyof ReviewDraft, value: string) => void;
   onResearchDraftChange: (field: keyof ResearchDraft, value: string) => void;
   onRegenerateShot: (storyboardId: string, shotId: string) => void;
   onStoryboardDraftChange: (field: keyof StoryboardDraft, value: string) => void;
@@ -79,6 +87,7 @@ type ProjectWorkspaceProps = {
   onSubmitProject: () => void;
   onSubmitReferenceAsset: () => void;
   onSubmitResearchReport: () => void;
+  onSubmitQualityReview: () => void;
   onSubmitStoryboard: () => void;
   onUpdateMemoryStatus: (id: string, status: "accepted" | "rejected") => void;
   onUpdateDeliveryReport: (input: DeliveryReportUpdateInput) => void;
@@ -101,6 +110,10 @@ type ProjectWorkspaceProps = {
   researchDraft: ResearchDraft;
   researchReports: ResearchReport[];
   researchResult: ResearchReportResult | null;
+  latestReviewChecks: QualityReviewCheck[];
+  latestReviewSuggestions: QualityReviewSuggestion[];
+  qualityReviews: QualityReview[];
+  reviewDraft: ReviewDraft;
   savingDeliveryReportId: string | null;
   savingPromptId: string | null;
   savingShotId: string | null;
@@ -116,6 +129,7 @@ type ProjectWorkspaceProps = {
 export function ProjectWorkspace({
   activeTab,
   adapterProfiles,
+  applyingSuggestionId,
   assets,
   brandDraft,
   briefDraft,
@@ -125,6 +139,7 @@ export function ProjectWorkspace({
   deliveryReports,
   exportingDeliveryPackage,
   generatingPrompts,
+  generatingQualityReview,
   generatingDeliveryReport,
   generatingStoryboard,
   generatingUnderstanding,
@@ -133,6 +148,7 @@ export function ProjectWorkspace({
   memoryCurationResult,
   memoryDraft,
   memoryEntries,
+  onApplyReviewSuggestion,
   onDeliveryDraftChange,
   onBriefDraftChange,
   onBrandDraftChange,
@@ -142,6 +158,7 @@ export function ProjectWorkspace({
   onPromptDraftChange,
   onProjectDraftChange,
   onReferenceAssetDraftChange,
+  onReviewDraftChange,
   onResearchDraftChange,
   onRegenerateShot,
   onStoryboardDraftChange,
@@ -155,6 +172,7 @@ export function ProjectWorkspace({
   onSubmitProject,
   onSubmitReferenceAsset,
   onSubmitResearchReport,
+  onSubmitQualityReview,
   onSubmitStoryboard,
   onUpdateMemoryStatus,
   onUpdateDeliveryReport,
@@ -173,6 +191,10 @@ export function ProjectWorkspace({
   researchDraft,
   researchReports,
   researchResult,
+  latestReviewChecks,
+  latestReviewSuggestions,
+  qualityReviews,
+  reviewDraft,
   savingDeliveryReportId,
   savingPromptId,
   savingShotId,
@@ -273,7 +295,7 @@ export function ProjectWorkspace({
           <section className="workspace-panel wide">
             <h2>Workflow Map</h2>
             <div className="workflow-map">
-              {["Brief", "Research", "Creative Direction", "Storyboard", "Prompts", "Delivery"].map(
+              {["Brief", "Research", "Creative Direction", "Storyboard", "Prompts", "Review", "Delivery"].map(
                 (step) => (
                   <div className="workflow-step" key={step}>
                     <span>{step}</span>
@@ -344,6 +366,20 @@ export function ProjectWorkspace({
           storyboards={storyboards}
         />
       ) : null}
+      {activeTab === "Review" ? (
+        <ReviewWorkspace
+          applyingSuggestionId={applyingSuggestionId}
+          generatingQualityReview={generatingQualityReview}
+          latestChecks={latestReviewChecks}
+          latestSuggestions={latestReviewSuggestions}
+          onApplySuggestion={onApplyReviewSuggestion}
+          onReviewDraftChange={onReviewDraftChange}
+          onSubmitReview={onSubmitQualityReview}
+          qualityReviews={qualityReviews}
+          reviewDraft={reviewDraft}
+          selectedProject={selectedProject}
+        />
+      ) : null}
       {activeTab === "Delivery" ? (
         <DeliveryWorkspace
           deliveryDraft={deliveryDraft}
@@ -378,7 +414,18 @@ export function ProjectWorkspace({
         />
       ) : null}
       {activeTab === "Versions" ? <VersionsPanel versions={versions} /> : null}
-      {!["Overview", "Brief", "Research", "Storyboard", "Prompts", "Delivery", "Assets", "Memory", "Versions"].includes(activeTab) ? (
+      {![
+        "Overview",
+        "Brief",
+        "Research",
+        "Storyboard",
+        "Prompts",
+        "Review",
+        "Delivery",
+        "Assets",
+        "Memory",
+        "Versions",
+      ].includes(activeTab) ? (
         <EmptyState
           body="This workspace section is reserved for the next content workflow milestone."
           title={`${activeTab} workspace`}

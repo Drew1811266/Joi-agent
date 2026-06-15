@@ -141,6 +141,17 @@ export type DeliveryReport = {
   updated_at: string;
 };
 
+export type QualityReview = {
+  id: string;
+  project_id: string;
+  summary: string;
+  score: number;
+  checklist_json: unknown;
+  suggestions_json: unknown;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ProjectVersion = {
   id: string;
   project_id: string;
@@ -375,6 +386,58 @@ export type PromptPackageUpdateInput = {
   negative_prompt: string;
   parameters_json: unknown;
   is_locked: boolean;
+};
+
+export type QualityReviewGenerationInput = {
+  project_id: string;
+  user_direction: string;
+};
+
+export type QualityReviewCheck = {
+  id: string;
+  category: string;
+  title: string;
+  status: "passed" | "warning" | "failed" | string;
+  severity: "info" | "medium" | "high" | string;
+  source_type: string;
+  source_id: string;
+  message: string;
+  evidence: string[];
+  suggestion_ids: string[];
+};
+
+export type QualityReviewSuggestion = {
+  id: string;
+  target_type: string;
+  target_id: string;
+  field: string;
+  current_value: string;
+  suggested_value: string;
+  rationale: string;
+  status: "pending" | "applied" | "rejected" | string;
+  check_ids: string[];
+};
+
+export type QualityReviewGenerationResult = {
+  review: QualityReview;
+  checks: QualityReviewCheck[];
+  suggestions: QualityReviewSuggestion[];
+  agent_run: AgentRun;
+  agent_events: AgentRunEvent[];
+};
+
+export type ApplyReviewSuggestionInput = {
+  review_id: string;
+  suggestion_id: string;
+};
+
+export type ApplyReviewSuggestionResult = {
+  updated_review: QualityReview;
+  suggestion: QualityReviewSuggestion;
+  applied_target_type: string;
+  applied_target_id: string;
+  agent_run: AgentRun;
+  agent_events: AgentRunEvent[];
 };
 
 export type DeliveryReportGenerationInput = {
