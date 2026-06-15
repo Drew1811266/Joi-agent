@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type {
+  ApplyReviewSuggestionInput,
+  ApplyReviewSuggestionResult,
   AgentPlanInput,
   AgentPlanResult,
   AgentRunWithEvents,
@@ -37,6 +39,9 @@ import type {
   ProjectUpdateInput,
   ProjectVersion,
   ProductUnderstanding,
+  QualityReview,
+  QualityReviewGenerationInput,
+  QualityReviewGenerationResult,
   ReferenceAssetInput,
   ResearchReport,
   ResearchReportInput,
@@ -51,7 +56,13 @@ import type {
   StoryboardWithShots,
 } from "../types/joi";
 
+export const DESKTOP_BACKEND_UNAVAILABLE_MESSAGE =
+  "Joi desktop backend is unavailable in this browser preview. Launch the Tauri desktop app to use workspace commands.";
+
 export function formatError(error: unknown): string {
+  if (isDesktopBackendUnavailableError(error)) {
+    return DESKTOP_BACKEND_UNAVAILABLE_MESSAGE;
+  }
   if (error instanceof Error) {
     return error.message;
   }
@@ -63,6 +74,15 @@ export function formatError(error: unknown): string {
   } catch {
     return "Unknown error";
   }
+}
+
+function isDesktopBackendUnavailableError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  return (
+    message.includes("Cannot read properties of undefined (reading 'invoke')") ||
+    message.includes("__TAURI_INTERNALS__") ||
+    message.includes("invoke is not a function")
+  );
 }
 
 export function healthCheck(): Promise<HealthResponse> {
@@ -179,6 +199,22 @@ export function listPromptPackages(projectId: string): Promise<PromptPackageView
 
 export function updatePromptPackage(input: PromptPackageUpdateInput): Promise<PromptPackageView> {
   return invoke<PromptPackageView>("joi_update_prompt_package", { input });
+}
+
+export function generateQualityReview(
+  input: QualityReviewGenerationInput,
+): Promise<QualityReviewGenerationResult> {
+  return invoke<QualityReviewGenerationResult>("joi_generate_quality_review", { input });
+}
+
+export function listQualityReviews(projectId: string): Promise<QualityReview[]> {
+  return invoke<QualityReview[]>("joi_list_quality_reviews", { project_id: projectId });
+}
+
+export function applyQualityReviewSuggestion(
+  input: ApplyReviewSuggestionInput,
+): Promise<ApplyReviewSuggestionResult> {
+  return invoke<ApplyReviewSuggestionResult>("joi_apply_quality_review_suggestion", { input });
 }
 
 export function generateDeliveryReport(

@@ -23,6 +23,7 @@ fn migration_creates_full_phase1_schema() {
         "shots",
         "prompt_packages",
         "delivery_reports",
+        "quality_reviews",
         "project_versions",
         "memory_entries",
         "agent_runs",
@@ -55,6 +56,24 @@ fn migration_creates_delivery_reports_table() {
             "missing delivery_reports column {expected}"
         );
     }
+}
+
+#[test]
+fn migration_creates_quality_reviews_table() {
+    let db = migrated_in_memory_database();
+    let tables = db.table_names().expect("table names");
+    assert!(tables.contains(&"quality_reviews".to_string()));
+
+    let mut statement = db
+        .connection()
+        .prepare("PRAGMA index_list(quality_reviews)")
+        .expect("index list");
+    let indexes = statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .expect("index rows")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("indexes");
+    assert!(indexes.contains(&"idx_quality_reviews_project_id".to_string()));
 }
 
 #[test]
@@ -188,6 +207,7 @@ fn migration_creates_expected_list_and_foreign_key_indexes() {
         "idx_prompt_packages_project_id",
         "idx_prompt_packages_shot_id",
         "idx_delivery_reports_project_id",
+        "idx_quality_reviews_project_id",
         "idx_project_versions_project_id",
         "idx_memory_entries_scope",
         "idx_memory_entries_brand_id",

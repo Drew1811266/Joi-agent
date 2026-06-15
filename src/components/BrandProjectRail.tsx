@@ -19,6 +19,7 @@ const workspaceTabs = [
   "Research",
   "Storyboard",
   "Prompts",
+  "Review",
   "Delivery",
   "Assets",
   "Memory",

@@ -6,8 +6,8 @@ use joi_agent_lib::db::Database;
 use joi_agent_lib::error::JoiError;
 use joi_agent_lib::repositories::{
     AssetCreate, BrandCreate, CreativeDirectionCreate, DeliveryReportCreate,
-    ProductUnderstandingCreate, ProjectCreate, PromptPackageCreate, Repository,
-    ResearchReportCreate, ShotCreate, StoryboardCreate,
+    ProductUnderstandingCreate, ProjectCreate, PromptPackageCreate, QualityReviewCreate,
+    Repository, ResearchReportCreate, ShotCreate, StoryboardCreate,
 };
 use joi_agent_lib::snapshots::{ProjectSnapshotService, SaveSnapshotInput};
 use rusqlite::params;
@@ -278,6 +278,43 @@ fn creates_project_snapshot_with_related_sections() {
         snapshot["memory_entries"][0]["content"],
         "Use natural movement"
     );
+}
+
+#[test]
+fn snapshot_includes_quality_reviews() {
+    let app = TestApp::new();
+    let db = Database::open(&app.db_path).expect("open database");
+    db.migrate().expect("migrate");
+    let repo = Repository::new(db.connection());
+    let brand = repo
+        .create_brand(BrandCreate {
+            name: "Brand".into(),
+            description: String::new(),
+        })
+        .expect("brand");
+    let project = repo
+        .create_project(ProjectCreate {
+            brand_id: brand.id,
+            title: "Quality Snapshot Project".into(),
+            advertising_goal: String::new(),
+            duration_seconds: 15,
+        })
+        .expect("project");
+    let review = repo
+        .create_quality_review(QualityReviewCreate {
+            project_id: project.id.clone(),
+            summary: "Quality review scored 100/100 with 0 failed check(s), 0 warning(s), and 0 pending suggestion(s).".to_string(),
+            score: 100,
+            checklist_json: json!([]),
+            suggestions_json: json!([]),
+        })
+        .expect("review");
+
+    let service = ProjectSnapshotService::new(db.connection());
+    let snapshot = service.build_snapshot(&project.id).expect("snapshot");
+
+    assert_eq!(snapshot["quality_reviews"][0]["id"], review.id);
+    assert_eq!(snapshot["quality_reviews"][0]["score"], 100);
 }
 
 #[test]

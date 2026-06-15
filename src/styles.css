@@ -383,6 +383,11 @@ form {
   gap: 14px;
 }
 
+.review-layout {
+  display: grid;
+  gap: 14px;
+}
+
 .brief-form {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -408,6 +413,11 @@ form {
 }
 
 .delivery-export-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.review-generator-form {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
 }
@@ -507,6 +517,67 @@ form {
   display: grid;
   gap: 3px;
   padding: 12px;
+}
+
+.review-score {
+  display: inline-flex;
+  width: fit-content;
+  min-width: 72px;
+  justify-content: center;
+  border: 1px solid #b9cdc3;
+  border-radius: 8px;
+  background: #eef4ef;
+  color: #17483d;
+  font-size: 18px;
+  font-weight: 760;
+  padding: 8px 10px;
+}
+
+.review-check-list,
+.review-suggestion-list {
+  display: grid;
+  gap: 10px;
+}
+
+.review-check,
+.review-suggestion {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid #d9ddd4;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.review-check.failed {
+  border-color: #c46a45;
+}
+
+.review-check.warning {
+  border-color: #aa8b38;
+}
+
+.review-check div,
+.review-suggestion-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.review-check span,
+.review-suggestion p,
+.review-suggestion small {
+  overflow-wrap: anywhere;
+}
+
+.review-suggestion {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.review-suggestion p {
+  margin: 0;
 }
 
 .row-actions {
@@ -787,6 +858,7 @@ form {
   .delivery-export-form,
   .delivery-editor-grid,
   .delivery-edit-form,
+  .review-generator-form,
   .prompt-generator-form,
   .prompt-edit-form,
   .storyboard-toolbar,
@@ -847,6 +919,10 @@ form {
   .prompt-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .review-suggestion {
+    grid-template-columns: 1fr;
   }
 
   .prompt-option-grid {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import {
+  applyQualityReviewSuggestion,
   createBrand,
   createMemoryEntry,
   createProject,
@@ -11,6 +12,7 @@ import {
   generateDeliveryReport,
   generateMemoryCandidates,
   generatePromptPackages,
+  generateQualityReview,
   generateResearchReport,
   generateStoryboard,
   getAgentRuntimeStatus,
@@ -26,6 +28,7 @@ import {
   listProductUnderstandings,
   listProjectVersions,
   listProjects,
+  listQualityReviews,
   listResearchReports,
   listStoryboards,
   previewDeliveryPackage,
@@ -47,6 +50,7 @@ import type { DeliveryDraft } from "./components/DeliveryWorkspace";
 import type { PromptDraft } from "./components/PromptWorkspace";
 import { ProjectWorkspace } from "./components/ProjectWorkspace";
 import { researchSourceFromDraft, type ResearchDraft } from "./components/ResearchWorkspace";
+import type { ReviewDraft } from "./components/ReviewWorkspace";
 import type { StoryboardDraft } from "./components/StoryboardWorkspace";
 import { TopBar } from "./components/TopBar";
 import type {
@@ -68,6 +72,9 @@ import type {
   PromptPackageView,
   Project,
   ProjectVersion,
+  QualityReview,
+  QualityReviewCheck,
+  QualityReviewSuggestion,
   ResearchReport,
   ResearchReportResult,
   ShotUpdateInput,
@@ -161,6 +168,10 @@ const emptyDeliveryDraft: DeliveryDraft = {
   export_dir: "",
 };
 
+const emptyReviewDraft: ReviewDraft = {
+  user_direction: "",
+};
+
 const defaultAgentGoal = "Plan the next content workflow steps for this project";
 
 export default function App() {
@@ -180,8 +191,10 @@ export default function App() {
   const [deliveryDraft, setDeliveryDraft] = useState<DeliveryDraft>(emptyDeliveryDraft);
   const [deliveryReports, setDeliveryReports] = useState<DeliveryReport[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [applyingSuggestionId, setApplyingSuggestionId] = useState<string | null>(null);
   const [exportingDeliveryPackage, setExportingDeliveryPackage] = useState(false);
   const [generatingDeliveryReport, setGeneratingDeliveryReport] = useState(false);
+  const [generatingQualityReview, setGeneratingQualityReview] = useState(false);
   const [generatingStoryboard, setGeneratingStoryboard] = useState(false);
   const [generatingPrompts, setGeneratingPrompts] = useState(false);
   const [generatingUnderstanding, setGeneratingUnderstanding] = useState(false);
@@ -205,6 +218,10 @@ export default function App() {
   const [researchDraft, setResearchDraft] = useState<ResearchDraft>(emptyResearchDraft);
   const [researchReports, setResearchReports] = useState<ResearchReport[]>([]);
   const [researchResult, setResearchResult] = useState<ResearchReportResult | null>(null);
+  const [latestReviewChecks, setLatestReviewChecks] = useState<QualityReviewCheck[]>([]);
+  const [latestReviewSuggestions, setLatestReviewSuggestions] = useState<QualityReviewSuggestion[]>([]);
+  const [qualityReviews, setQualityReviews] = useState<QualityReview[]>([]);
+  const [reviewDraft, setReviewDraft] = useState<ReviewDraft>(emptyReviewDraft);
   const [regeneratingShotId, setRegeneratingShotId] = useState<string | null>(null);
   const [savingDeliveryReportId, setSavingDeliveryReportId] = useState<string | null>(null);
   const [savingPromptId, setSavingPromptId] = useState<string | null>(null);
@@ -281,6 +298,10 @@ export default function App() {
       setReferenceAssetDraft(emptyReferenceAssetDraft);
       setResearchDraft(emptyResearchDraft);
       setResearchResult(null);
+      setLatestReviewChecks([]);
+      setLatestReviewSuggestions([]);
+      setQualityReviews([]);
+      setReviewDraft(emptyReviewDraft);
       setStoryboardDraft({
         ...emptyStoryboardDraft,
         preferred_duration_seconds: String(selectedProject.duration_seconds),
@@ -302,6 +323,10 @@ export default function App() {
       setResearchDraft(emptyResearchDraft);
       setResearchReports([]);
       setResearchResult(null);
+      setLatestReviewChecks([]);
+      setLatestReviewSuggestions([]);
+      setQualityReviews([]);
+      setReviewDraft(emptyReviewDraft);
       setStoryboardDraft(emptyStoryboardDraft);
       setStoryboardResult(null);
       setStoryboards([]);
@@ -367,6 +392,7 @@ export default function App() {
         reportList,
         storyboardList,
         promptPackageList,
+        qualityReviewList,
         deliveryReportList,
         runList,
       ] = await Promise.all([
@@ -378,6 +404,7 @@ export default function App() {
         listResearchReports(projectId),
         listStoryboards(projectId),
         listPromptPackages(projectId),
+        listQualityReviews(projectId),
         listDeliveryReports(projectId),
         listAgentRuns(projectId),
       ]);
@@ -389,6 +416,7 @@ export default function App() {
       setResearchReports(reportList);
       setStoryboards(storyboardList);
       setPromptPackages(promptPackageList);
+      setQualityReviews(qualityReviewList);
       setDeliveryReports(deliveryReportList);
       setAgentRuns(runList);
     } catch (loadError) {
@@ -421,6 +449,10 @@ export default function App() {
     setResearchDraft(emptyResearchDraft);
     setResearchReports([]);
     setResearchResult(null);
+    setLatestReviewChecks([]);
+    setLatestReviewSuggestions([]);
+    setQualityReviews([]);
+    setReviewDraft(emptyReviewDraft);
     setStoryboardDraft(emptyStoryboardDraft);
     setStoryboardResult(null);
     setStoryboards([]);
@@ -451,6 +483,10 @@ export default function App() {
     setResearchDraft(emptyResearchDraft);
     setResearchReports([]);
     setResearchResult(null);
+    setLatestReviewChecks([]);
+    setLatestReviewSuggestions([]);
+    setQualityReviews([]);
+    setReviewDraft(emptyReviewDraft);
     setStoryboardDraft(emptyStoryboardDraft);
     setStoryboardResult(null);
     setStoryboards([]);
@@ -944,6 +980,75 @@ export default function App() {
     }
   }
 
+  function handleReviewDraftChange(field: keyof ReviewDraft, value: string) {
+    setReviewDraft((draft) => ({ ...draft, [field]: value }));
+  }
+
+  async function submitQualityReview() {
+    if (!selectedProject) {
+      setError("Select a project before generating a quality review.");
+      return;
+    }
+
+    try {
+      setGeneratingQualityReview(true);
+      setError(null);
+      const result = await generateQualityReview({
+        project_id: selectedProject.id,
+        user_direction: reviewDraft.user_direction,
+      });
+      await refreshProjectState(selectedProject.id);
+      setLatestReviewChecks(result.checks);
+      setLatestReviewSuggestions(result.suggestions);
+      setQualityReviews((reviews) => replaceOrAppendReview(reviews, result.review));
+      setAgentRuns((runs) => [
+        { run: result.agent_run, events: result.agent_events },
+        ...runs.filter((item) => item.run.id !== result.agent_run.id),
+      ]);
+      setActivityLog((entries) => [...entries, `Generated quality review ${result.review.score}/100.`]);
+    } catch (submitError) {
+      setError(formatError(submitError));
+    } finally {
+      setGeneratingQualityReview(false);
+    }
+  }
+
+  async function applyReviewSuggestion(reviewId: string, suggestionId: string) {
+    if (!selectedProject) {
+      setError("Select a project before applying a review suggestion.");
+      return;
+    }
+
+    try {
+      setApplyingSuggestionId(suggestionId);
+      setError(null);
+      const result = await applyQualityReviewSuggestion({
+        review_id: reviewId,
+        suggestion_id: suggestionId,
+      });
+      await refreshProjectState(selectedProject.id);
+      setQualityReviews((reviews) => replaceOrAppendReview(reviews, result.updated_review));
+      setLatestReviewSuggestions((suggestions) => {
+        const source = suggestions.length > 0 ? suggestions : normalizeReviewSuggestions(result.updated_review);
+        return source.map((suggestion) =>
+          suggestion.id === suggestionId ? result.suggestion : suggestion,
+        );
+      });
+      setAgentRuns((runs) => [
+        { run: result.agent_run, events: result.agent_events },
+        ...runs.filter((item) => item.run.id !== result.agent_run.id),
+      ]);
+      setActivityLog((entries) => [
+        ...entries,
+        `Applied review suggestion to ${result.applied_target_type}.`,
+      ]);
+    } catch (submitError) {
+      setError(formatError(submitError));
+    } finally {
+      setApplyingSuggestionId(null);
+    }
+  }
+
   async function submitDeliveryReport() {
     if (!selectedProject) {
       setError("Select a project before generating a delivery report.");
@@ -1130,6 +1235,7 @@ export default function App() {
         <ProjectWorkspace
           activeTab={activeTab}
           adapterProfiles={adapterProfiles}
+          applyingSuggestionId={applyingSuggestionId}
           assets={assets}
           brandDraft={brandDraft}
           briefDraft={briefDraft}
@@ -1139,12 +1245,14 @@ export default function App() {
           deliveryReports={deliveryReports}
           exportingDeliveryPackage={exportingDeliveryPackage}
           generatingPrompts={generatingPrompts}
+          generatingQualityReview={generatingQualityReview}
           generatingDeliveryReport={generatingDeliveryReport}
           generatingUnderstanding={generatingUnderstanding}
           generatingResearch={generatingResearch}
           memoryCurationDraft={memoryCurationDraft}
           memoryCurationResult={memoryCurationResult}
           onBriefDraftChange={(field, value) => setBriefDraft((draft) => ({ ...draft, [field]: value }))}
+          onApplyReviewSuggestion={applyReviewSuggestion}
           onDeliveryDraftChange={(field, value) => setDeliveryDraft((draft) => ({ ...draft, [field]: value }))}
           memoryDraft={memoryDraft}
           memoryEntries={memoryEntries}
@@ -1164,6 +1272,7 @@ export default function App() {
           onReferenceAssetDraftChange={(field, value) =>
             setReferenceAssetDraft((draft) => ({ ...draft, [field]: value }))
           }
+          onReviewDraftChange={handleReviewDraftChange}
           onResearchDraftChange={(field, value) => setResearchDraft((draft) => ({ ...draft, [field]: value }))}
           onStoryboardDraftChange={(field, value) =>
             setStoryboardDraft((draft) => ({ ...draft, [field]: value }))
@@ -1177,6 +1286,7 @@ export default function App() {
           onSubmitProject={submitProject}
           onSubmitReferenceAsset={submitReferenceAsset}
           onSubmitResearchReport={submitResearchReport}
+          onSubmitQualityReview={submitQualityReview}
           onSubmitStoryboard={submitStoryboardGeneration}
           onSubmitVideoPrompts={submitVideoPrompts}
           onUpdatePromptPackage={handleUpdatePromptPackage}
@@ -1196,6 +1306,10 @@ export default function App() {
           researchDraft={researchDraft}
           researchReports={researchReports}
           researchResult={researchResult}
+          latestReviewChecks={latestReviewChecks}
+          latestReviewSuggestions={latestReviewSuggestions}
+          qualityReviews={qualityReviews}
+          reviewDraft={reviewDraft}
           regeneratingShotId={regeneratingShotId}
           savingDeliveryReportId={savingDeliveryReportId}
           savingPromptId={savingPromptId}
@@ -1238,4 +1352,22 @@ function splitListText(value: string): string[] {
     .split(/[\n,，;；]/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function replaceOrAppendReview(reviews: QualityReview[], review: QualityReview): QualityReview[] {
+  let replaced = false;
+  const next = reviews.map((item) => {
+    if (item.id !== review.id) {
+      return item;
+    }
+    replaced = true;
+    return review;
+  });
+  return replaced ? next : [...next, review];
+}
+
+function normalizeReviewSuggestions(review: QualityReview): QualityReviewSuggestion[] {
+  return Array.isArray(review.suggestions_json)
+    ? (review.suggestions_json as QualityReviewSuggestion[])
+    : [];
 }

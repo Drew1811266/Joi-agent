@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import type {
   DeliveryPackagePreview,
@@ -16,6 +16,12 @@ type DeliveryEditDraft = {
   title: string;
   markdown: string;
   is_final_candidate: boolean;
+};
+
+const emptyEditDraft: DeliveryEditDraft = {
+  title: "",
+  markdown: "",
+  is_final_candidate: false,
 };
 
 type DeliveryWorkspaceProps = {
@@ -50,11 +56,11 @@ export function DeliveryWorkspace({
   selectedProject,
 }: DeliveryWorkspaceProps) {
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
-  const [editDraft, setEditDraft] = useState<DeliveryEditDraft>({
-    title: "",
-    markdown: "",
-    is_final_candidate: false,
-  });
+  const editDraftRef = useRef<DeliveryEditDraft>(emptyEditDraft);
+  const finalCandidateInputRef = useRef<HTMLInputElement | null>(null);
+  const markdownTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
+  const [editDraft, setEditDraft] = useState<DeliveryEditDraft>(emptyEditDraft);
   const selectedReport = useMemo(
     () =>
       deliveryReports.find((report) => report.id === selectedReportId) ??
@@ -70,29 +76,44 @@ export function DeliveryWorkspace({
     if (selectedReport && selectedReport.id !== selectedReportId) {
       setSelectedReportId(selectedReport.id);
     }
+  }, [selectedReport, selectedReportId]);
+
+  useEffect(() => {
     if (selectedReport) {
-      setEditDraft({
+      const nextDraft = {
         title: selectedReport.title,
         markdown: selectedReport.markdown,
         is_final_candidate: selectedReport.is_final_candidate,
-      });
+      };
+      editDraftRef.current = nextDraft;
+      setEditDraft(nextDraft);
     }
-  }, [selectedReport, selectedReportId]);
+  }, [selectedReport?.id, selectedReport?.updated_at]);
 
   function updateEditDraft(field: keyof DeliveryEditDraft, value: string | boolean) {
-    setEditDraft((draft) => ({ ...draft, [field]: value }));
+    setEditDraft((draft) => {
+      const nextDraft = { ...draft, [field]: value };
+      editDraftRef.current = nextDraft;
+      return nextDraft;
+    });
   }
 
   function submitReportUpdate() {
     if (!selectedReport) {
       return;
     }
+    const currentDraft = {
+      title: titleInputRef.current?.value ?? editDraftRef.current.title,
+      markdown: markdownTextareaRef.current?.value ?? editDraftRef.current.markdown,
+      is_final_candidate:
+        finalCandidateInputRef.current?.checked ?? editDraftRef.current.is_final_candidate,
+    };
     onUpdateDeliveryReport({
       id: selectedReport.id,
-      title: editDraft.title,
-      markdown: editDraft.markdown,
+      title: currentDraft.title,
+      markdown: currentDraft.markdown,
       sections_json: selectedReport.sections_json,
-      is_final_candidate: editDraft.is_final_candidate,
+      is_final_candidate: currentDraft.is_final_candidate,
     });
   }
 
@@ -198,6 +219,7 @@ export function DeliveryWorkspace({
                 Report title
                 <input
                   onChange={(event) => updateEditDraft("title", event.target.value)}
+                  ref={titleInputRef}
                   value={editDraft.title}
                 />
               </label>
@@ -207,6 +229,7 @@ export function DeliveryWorkspace({
                   onChange={(event) =>
                     updateEditDraft("is_final_candidate", event.target.checked)
                   }
+                  ref={finalCandidateInputRef}
                   type="checkbox"
                 />
                 Final candidate
@@ -215,6 +238,7 @@ export function DeliveryWorkspace({
                 Markdown report
                 <textarea
                   onChange={(event) => updateEditDraft("markdown", event.target.value)}
+                  ref={markdownTextareaRef}
                   rows={18}
                   value={editDraft.markdown}
                 />

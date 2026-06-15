@@ -10,6 +10,7 @@ pub mod memory_curation;
 pub mod models;
 pub mod project_package;
 pub mod prompt_adapter;
+pub mod quality_review;
 pub mod repositories;
 pub mod research;
 pub mod snapshots;
@@ -71,6 +72,9 @@ pub fn run() {
             commands::joi_generate_prompt_packages,
             commands::joi_list_prompt_packages,
             commands::joi_update_prompt_package,
+            commands::joi_generate_quality_review,
+            commands::joi_list_quality_reviews,
+            commands::joi_apply_quality_review_suggestion,
             commands::joi_generate_delivery_report,
             commands::joi_list_delivery_reports,
             commands::joi_update_delivery_report,

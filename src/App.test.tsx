@@ -2,12 +2,21 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import App from "./App";
+import { DESKTOP_BACKEND_UNAVAILABLE_MESSAGE, formatError } from "./api/joiApi";
 
 const invokeMock = vi.fn();
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (command: string, payload?: unknown) => invokeMock(command, payload),
 }));
+
+describe("formatError", () => {
+  test("formats missing Tauri backend errors for browser preview", () => {
+    expect(formatError(new TypeError("Cannot read properties of undefined (reading 'invoke')"))).toBe(
+      DESKTOP_BACKEND_UNAVAILABLE_MESSAGE,
+    );
+  });
+});
 
 const mockStoryboardGenerationResult = {
   storyboard: {
@@ -234,6 +243,87 @@ function mockDeliveryReportResult(markdown = "# Spring Drop Film Delivery Report
   };
 }
 
+const mockQualityReviewResult = {
+  review: {
+    id: "quality-review-1",
+    project_id: "project-1",
+    summary:
+      "Quality review scored 82/100 with 1 failed check(s), 1 warning(s), and 1 pending suggestion(s).",
+    score: 82,
+    checklist_json: [
+      {
+        id: "prompt-completeness-prompt-gpt_image_2",
+        category: "prompt_completeness",
+        title: "Prompt contains required adapter fields",
+        status: "failed",
+        severity: "high",
+        source_type: "prompt_package",
+        source_id: "prompt-gpt_image_2",
+        message: "GPT Image 2 is missing required field(s): garment.",
+        evidence: ["garment"],
+        suggestion_ids: ["suggest-prompt-prompt-gpt_image_2-missing-fields"],
+      },
+    ],
+    suggestions_json: [
+      {
+        id: "suggest-prompt-prompt-gpt_image_2-missing-fields",
+        target_type: "prompt_package",
+        target_id: "prompt-gpt_image_2",
+        field: "prompt_text",
+        current_value: "Create a model photo.",
+        suggested_value: "Create a model photo. Include: garment.",
+        rationale: "Complete provider fields.",
+        status: "pending",
+        check_ids: ["prompt-completeness-prompt-gpt_image_2"],
+      },
+    ],
+    created_at: "2026-06-15T00:00:00Z",
+    updated_at: "2026-06-15T00:00:00Z",
+  },
+  checks: [
+    {
+      id: "prompt-completeness-prompt-gpt_image_2",
+      category: "prompt_completeness",
+      title: "Prompt contains required adapter fields",
+      status: "failed",
+      severity: "high",
+      source_type: "prompt_package",
+      source_id: "prompt-gpt_image_2",
+      message: "GPT Image 2 is missing required field(s): garment.",
+      evidence: ["garment"],
+      suggestion_ids: ["suggest-prompt-prompt-gpt_image_2-missing-fields"],
+    },
+  ],
+  suggestions: [
+    {
+      id: "suggest-prompt-prompt-gpt_image_2-missing-fields",
+      target_type: "prompt_package",
+      target_id: "prompt-gpt_image_2",
+      field: "prompt_text",
+      current_value: "Create a model photo.",
+      suggested_value: "Create a model photo. Include: garment.",
+      rationale: "Complete provider fields.",
+      status: "pending",
+      check_ids: ["prompt-completeness-prompt-gpt_image_2"],
+    },
+  ],
+  agent_run: {
+    id: "run-review",
+    project_id: "project-1",
+    user_goal: "Review content quality for Spring Drop Film.",
+    status: "completed",
+    runtime_kind: "hermes_core",
+    runtime_mode: "local_quality_review_bridge",
+    runtime_version: "0.19.0",
+    roles_json: ["reviewer"],
+    plan_json: [],
+    result_summary: "Quality review scored 82/100.",
+    created_at: "2026-06-15T00:00:00Z",
+    updated_at: "2026-06-15T00:00:00Z",
+  },
+  agent_events: [],
+};
+
 describe("Joi workspace shell", () => {
   beforeEach(() => {
     invokeMock.mockReset();
@@ -286,6 +376,7 @@ describe("Joi workspace shell", () => {
         case "joi_list_creative_directions":
         case "joi_list_research_reports":
         case "joi_list_delivery_reports":
+        case "joi_list_quality_reviews":
           return Promise.resolve([]);
         case "joi_list_storyboards":
           return Promise.resolve([
@@ -608,6 +699,30 @@ describe("Joi workspace shell", () => {
             completeness: [],
             sort_order: 1,
           });
+        case "joi_generate_quality_review":
+          return Promise.resolve(mockQualityReviewResult);
+        case "joi_apply_quality_review_suggestion":
+          return Promise.resolve({
+            updated_review: {
+              ...mockQualityReviewResult.review,
+              suggestions_json: mockQualityReviewResult.review.suggestions_json.map((suggestion) => ({
+                ...suggestion,
+                status: "applied",
+              })),
+            },
+            suggestion: {
+              ...mockQualityReviewResult.suggestions[0],
+              status: "applied",
+            },
+            applied_target_type: "prompt_package",
+            applied_target_id: "prompt-gpt_image_2",
+            agent_run: {
+              ...mockQualityReviewResult.agent_run,
+              id: "run-review-apply",
+              runtime_mode: "local_quality_iteration_bridge",
+            },
+            agent_events: [],
+          });
         case "joi_generate_delivery_report":
           return Promise.resolve(mockDeliveryReportResult());
         case "joi_update_delivery_report":
@@ -853,6 +968,41 @@ describe("Joi workspace shell", () => {
     });
   });
 
+  test("generates and applies quality review suggestions", async () => {
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "Spring Drop Film" });
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    expect(await screen.findByRole("heading", { name: "Quality Review" })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Review direction"), {
+      target: { value: "Check prompt completeness before delivery." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /generate review/i }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("joi_generate_quality_review", {
+        input: {
+          project_id: "project-1",
+          user_direction: "Check prompt completeness before delivery.",
+        },
+      });
+    });
+    expect(await screen.findByText("82/100")).toBeInTheDocument();
+    expect(screen.getByText("Prompt contains required adapter fields")).toBeInTheDocument();
+    expect(screen.getByText("Create a model photo. Include: garment.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /apply suggestion/i }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("joi_apply_quality_review_suggestion", {
+        input: {
+          review_id: "quality-review-1",
+          suggestion_id: "suggest-prompt-prompt-gpt_image_2-missing-fields",
+        },
+      });
+    });
+  });
+
   test("keeps new brand and project actions in create mode", async () => {
     render(<App />);
 
@@ -1074,6 +1224,7 @@ describe("Joi workspace shell", () => {
     fireEvent.change(screen.getByLabelText("Markdown report"), {
       target: { value: "# Edited Delivery Report" },
     });
+    expect(screen.getByLabelText("Markdown report")).toHaveValue("# Edited Delivery Report");
     fireEvent.click(screen.getByRole("button", { name: /save report/i }));
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
