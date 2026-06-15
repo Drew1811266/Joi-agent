@@ -9,11 +9,11 @@ use joi_agent_lib::commands::{
     create_brand, create_memory_entry, create_project, create_reference_asset,
     generate_brief_understanding, get_agent_runtime_status, get_brand, get_project,
     joi_health_check, list_agent_runs, list_brands, list_creative_directions, list_memory_entries,
-    list_product_understandings, list_project_versions, list_projects, save_project_snapshot,
-    start_agent_plan, update_brand, update_project, AppState, AssetImportCommandInput, BrandInput,
-    BrandUpdateInput, MemoryEntryInput, MemoryListInput, ProjectExportCommandInput,
-    ProjectImportCommandInput, ProjectInput, ProjectUpdateInput, ReferenceAssetInput,
-    RestoreVersionInput, SnapshotInput,
+    list_product_understandings, list_project_versions, list_projects, resolve_workspace_root,
+    save_project_snapshot, start_agent_plan, update_brand, update_project, AppState,
+    AssetImportCommandInput, BrandInput, BrandUpdateInput, MemoryEntryInput, MemoryListInput,
+    ProjectExportCommandInput, ProjectImportCommandInput, ProjectInput, ProjectUpdateInput,
+    ReferenceAssetInput, RestoreVersionInput, SnapshotInput,
 };
 use joi_agent_lib::db::Database;
 use joi_agent_lib::error::JoiError;
@@ -440,4 +440,17 @@ fn state_helpers_start_and_list_agent_runs() {
     assert_eq!(runs.len(), 1);
     assert_eq!(runs[0].run.id, result.run.id);
     assert_eq!(runs[0].events.len(), 7);
+}
+
+#[test]
+fn resolves_workspace_root_from_src_tauri_child_directory() {
+    let temp_dir = tempfile::tempdir().expect("temp dir");
+    let root = temp_dir.path().join("Joi-agent");
+    let src_tauri = root.join("src-tauri");
+    std::fs::create_dir_all(&src_tauri).expect("src-tauri");
+    std::fs::write(root.join("package.json"), "{}").expect("package json");
+
+    let resolved = resolve_workspace_root(&src_tauri);
+
+    assert_eq!(resolved, root);
 }

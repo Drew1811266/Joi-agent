@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
 use serde::{Deserialize, Serialize};
@@ -526,15 +526,35 @@ pub fn create_reference_asset(state: &AppState, input: ReferenceAssetInput) -> J
 
 pub fn get_agent_runtime_status(_state: &AppState) -> JoiResult<AgentRuntimeStatus> {
     let cwd = std::env::current_dir()?;
+    let workspace_root = resolve_workspace_root(&cwd);
     Ok(inspect_hermes_runtime(HermesRuntimeConfig {
-        checkout_path: cwd.join(".external").join("hermes-agent"),
-        phase0_report_path: cwd
+        checkout_path: workspace_root.join(".external").join("hermes-agent"),
+        phase0_report_path: workspace_root
             .join("docs")
             .join("superpowers")
             .join("reports")
             .join("hermes-phase0-report.md"),
         runtime_mode: "local_planner_bridge".to_string(),
     }))
+}
+
+pub fn resolve_workspace_root(cwd: &Path) -> PathBuf {
+    for candidate in cwd.ancestors() {
+        if candidate.join("package.json").is_file() && candidate.join("src-tauri").is_dir() {
+            return candidate.to_path_buf();
+        }
+        if candidate.join(".external").join("hermes-agent").exists()
+            || candidate
+                .join("docs")
+                .join("superpowers")
+                .join("reports")
+                .join("hermes-phase0-report.md")
+                .exists()
+        {
+            return candidate.to_path_buf();
+        }
+    }
+    cwd.to_path_buf()
 }
 
 pub fn start_agent_plan(state: &AppState, input: AgentPlanInput) -> JoiResult<AgentPlanResult> {
