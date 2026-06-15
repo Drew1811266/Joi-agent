@@ -19,13 +19,18 @@ use crate::hermes_bridge::{inspect_hermes_runtime, AgentRuntimeStatus, HermesRun
 use crate::memory_curation::{curate_memory_candidates, MemoryCurationInput, MemoryCurationResult};
 use crate::models::{
     AgentRun, AgentRunEvent, Asset, Brand, CreativeDirection, DeliveryReport, MemoryEntry,
-    ProductUnderstanding, Project, ProjectVersion, ResearchReport,
+    ProductUnderstanding, Project, ProjectVersion, QualityReview, ResearchReport,
 };
 use crate::project_package::{ProjectExportInput, ProjectImportInput, ProjectPackageService};
 use crate::prompt_adapter::{
     generate_prompt_packages as generate_prompt_packages_service, prompt_adapter_profiles,
     prompt_package_view, PromptAdapterProfile, PromptGenerationInput, PromptGenerationResult,
     PromptPackageView,
+};
+use crate::quality_review::{
+    apply_quality_review_suggestion as apply_quality_review_suggestion_service,
+    generate_quality_review as generate_quality_review_service, ApplyReviewSuggestionInput,
+    ApplyReviewSuggestionResult, QualityReviewGenerationInput, QualityReviewGenerationResult,
 };
 use crate::repositories::{
     AssetCreate, BrandCreate, BrandUpdate, DeliveryReportUpdate, MemoryEntryCreate,
@@ -412,6 +417,30 @@ pub fn joi_update_prompt_package(
 }
 
 #[tauri::command(rename_all = "snake_case")]
+pub fn joi_generate_quality_review(
+    state: State<'_, AppState>,
+    input: QualityReviewGenerationInput,
+) -> JoiResult<QualityReviewGenerationResult> {
+    generate_quality_review(state.inner(), input)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn joi_list_quality_reviews(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> JoiResult<Vec<QualityReview>> {
+    list_quality_reviews(state.inner(), project_id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn joi_apply_quality_review_suggestion(
+    state: State<'_, AppState>,
+    input: ApplyReviewSuggestionInput,
+) -> JoiResult<ApplyReviewSuggestionResult> {
+    apply_quality_review_suggestion(state.inner(), input)
+}
+
+#[tauri::command(rename_all = "snake_case")]
 pub fn joi_generate_delivery_report(
     state: State<'_, AppState>,
     input: DeliveryReportGenerationInput,
@@ -789,6 +818,37 @@ pub fn update_prompt_package(
         is_locked: input.is_locked,
     })?;
     Ok(prompt_package_view(package))
+}
+
+pub fn generate_quality_review(
+    state: &AppState,
+    input: QualityReviewGenerationInput,
+) -> JoiResult<QualityReviewGenerationResult> {
+    let runtime_status = get_agent_runtime_status(state)?;
+    let db = lock_db(state)?;
+    generate_quality_review_service(
+        &Repository::new(db.connection()),
+        input,
+        runtime_status.hermes_version,
+    )
+}
+
+pub fn list_quality_reviews(state: &AppState, project_id: String) -> JoiResult<Vec<QualityReview>> {
+    let db = lock_db(state)?;
+    Repository::new(db.connection()).list_quality_reviews(&project_id)
+}
+
+pub fn apply_quality_review_suggestion(
+    state: &AppState,
+    input: ApplyReviewSuggestionInput,
+) -> JoiResult<ApplyReviewSuggestionResult> {
+    let runtime_status = get_agent_runtime_status(state)?;
+    let db = lock_db(state)?;
+    apply_quality_review_suggestion_service(
+        &Repository::new(db.connection()),
+        input,
+        runtime_status.hermes_version,
+    )
 }
 
 pub fn generate_delivery_report(

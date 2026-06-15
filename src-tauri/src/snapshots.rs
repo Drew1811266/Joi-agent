@@ -57,6 +57,7 @@ impl<'a> ProjectSnapshotService<'a> {
             "creative_directions": repo.list_creative_directions(project_id)?,
             "storyboards": repo.list_storyboards_with_shots(project_id)?,
             "prompt_packages": repo.list_prompt_packages(project_id)?,
+            "quality_reviews": repo.list_quality_reviews(project_id)?,
             "delivery_reports": repo.list_delivery_reports(project_id)?,
             "memory_entries": repo.list_memory_entries_for_project(project_id)?,
         }))

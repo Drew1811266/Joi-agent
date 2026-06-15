@@ -6,26 +6,29 @@ use std::sync::Mutex;
 use common::TestApp;
 use joi_agent_lib::agent_runtime::AgentPlanInput;
 use joi_agent_lib::commands::{
-    create_brand, create_memory_entry, create_project, create_reference_asset, export_project,
-    generate_brief_understanding, generate_delivery_report, generate_memory_candidates,
-    generate_prompt_packages, generate_research_report, generate_storyboard,
-    get_agent_runtime_status, get_brand, get_project, get_prompt_adapter_profiles,
-    joi_health_check, list_agent_runs, list_brands, list_creative_directions,
-    list_delivery_reports, list_memory_entries, list_product_understandings, list_project_versions,
-    list_projects, list_prompt_packages, list_research_reports, list_storyboards,
-    preview_delivery_package, regenerate_shot, resolve_workspace_root, save_project_snapshot,
-    start_agent_plan, update_brand, update_delivery_report, update_memory_status, update_project,
-    update_prompt_package, update_shot, AppState, AssetImportCommandInput, BrandInput,
-    BrandUpdateInput, DeliveryPackagePreviewInput, DeliveryReportUpdateInput, MemoryEntryInput,
-    MemoryListInput, MemoryStatusInput, ProjectExportCommandInput, ProjectImportCommandInput,
-    ProjectInput, ProjectUpdateInput, PromptPackageUpdateInput, ReferenceAssetInput,
-    RestoreVersionInput, ShotUpdateInput, SnapshotInput,
+    apply_quality_review_suggestion, create_brand, create_memory_entry, create_project,
+    create_reference_asset, export_project, generate_brief_understanding, generate_delivery_report,
+    generate_memory_candidates, generate_prompt_packages, generate_quality_review,
+    generate_research_report, generate_storyboard, get_agent_runtime_status, get_brand,
+    get_project, get_prompt_adapter_profiles, joi_health_check, list_agent_runs, list_brands,
+    list_creative_directions, list_delivery_reports, list_memory_entries,
+    list_product_understandings, list_project_versions, list_projects, list_prompt_packages,
+    list_quality_reviews, list_research_reports, list_storyboards, preview_delivery_package,
+    regenerate_shot, resolve_workspace_root, save_project_snapshot, start_agent_plan, update_brand,
+    update_delivery_report, update_memory_status, update_project, update_prompt_package,
+    update_shot, AppState, AssetImportCommandInput, BrandInput, BrandUpdateInput,
+    DeliveryPackagePreviewInput, DeliveryReportUpdateInput, MemoryEntryInput, MemoryListInput,
+    MemoryStatusInput, ProjectExportCommandInput, ProjectImportCommandInput, ProjectInput,
+    ProjectUpdateInput, PromptPackageUpdateInput, ReferenceAssetInput, RestoreVersionInput,
+    ShotUpdateInput, SnapshotInput,
 };
 use joi_agent_lib::db::Database;
 use joi_agent_lib::delivery_report::DeliveryReportGenerationInput;
 use joi_agent_lib::error::JoiError;
 use joi_agent_lib::memory_curation::MemoryCurationInput;
 use joi_agent_lib::prompt_adapter::PromptGenerationInput;
+use joi_agent_lib::quality_review::{ApplyReviewSuggestionInput, QualityReviewGenerationInput};
+use joi_agent_lib::repositories::{QualityReviewCreate, Repository};
 use joi_agent_lib::research::{ResearchReportInput, ResearchSourceInput};
 use joi_agent_lib::storyboard::{ShotRegenerationInput, StoryboardGenerationInput};
 use joi_agent_lib::understanding::BriefUnderstandingInput;
@@ -1020,6 +1023,126 @@ fn state_helpers_generate_update_list_preview_and_export_delivery_report() {
     assert_eq!(
         std::fs::read_to_string(report_path).expect("read exported report"),
         "# Edited Delivery Report"
+    );
+}
+
+#[test]
+fn quality_review_commands_generate_list_and_apply_suggestions() {
+    let (_app, state) = test_state();
+    let brand = create_brand(
+        &state,
+        BrandInput {
+            name: "Atelier Joi".to_string(),
+            description: "Premium studio outerwear".to_string(),
+        },
+    )
+    .expect("brand");
+    let project = create_project(
+        &state,
+        ProjectInput {
+            brand_id: brand.id,
+            title: "Spring Drop Film".to_string(),
+            advertising_goal: "Launch awareness".to_string(),
+            duration_seconds: 15,
+        },
+    )
+    .expect("project");
+
+    generate_brief_understanding(
+        &state,
+        BriefUnderstandingInput {
+            project_id: project.id.clone(),
+            brief_text: "15 second outerwear ad".to_string(),
+            product_name: "Lightweight Trench".to_string(),
+            category: "outerwear".to_string(),
+            audience: "urban commuters".to_string(),
+            target_platforms: vec!["gpt_image_2".to_string()],
+            selling_points_text: "water-resistant cotton".to_string(),
+            visual_direction: "clean warm studio".to_string(),
+            constraints_text: "avoid winter styling".to_string(),
+            reference_asset_ids: Vec::new(),
+        },
+    )
+    .expect("understanding");
+
+    let storyboard = generate_storyboard(
+        &state,
+        StoryboardGenerationInput {
+            project_id: project.id.clone(),
+            user_direction: "Generate a studio sequence.".to_string(),
+            preferred_duration_seconds: Some(15),
+            preferred_shot_count: Some(5),
+        },
+    )
+    .expect("storyboard");
+    generate_prompt_packages(
+        &state,
+        PromptGenerationInput {
+            project_id: project.id.clone(),
+            shot_ids: vec![storyboard.shots[0].shot.id.clone()],
+            image_brief: "Ecommerce model photo".to_string(),
+            target_platforms: vec!["gpt_image_2".to_string()],
+            user_direction: "Image prompt".to_string(),
+        },
+    )
+    .expect("prompts");
+
+    let review = generate_quality_review(
+        &state,
+        QualityReviewGenerationInput {
+            project_id: project.id.clone(),
+            user_direction: "Check before delivery.".to_string(),
+        },
+    )
+    .expect("review");
+    assert_eq!(review.review.project_id, project.id);
+    assert_eq!(review.agent_run.runtime_mode, "local_quality_review_bridge");
+
+    let listed = list_quality_reviews(&state, project.id.clone()).expect("listed reviews");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, review.review.id);
+
+    let target_shot_id = storyboard.shots[0].shot.id.clone();
+    let suggestion_id = format!("suggest-shot-{target_shot_id}-description-command");
+    let manual_review_id = {
+        let db = state.db.lock().expect("lock db");
+        let repo = Repository::new(db.connection());
+        repo.create_quality_review(QualityReviewCreate {
+            project_id: project.id.clone(),
+            summary: "Quality review scored 88/100 with 0 failed check(s), 1 warning(s), and 1 pending suggestion(s).".to_string(),
+            score: 88,
+            checklist_json: json!([]),
+            suggestions_json: json!([
+                {
+                    "id": suggestion_id,
+                    "target_type": "shot",
+                    "target_id": target_shot_id,
+                    "field": "description",
+                    "current_value": storyboard.shots[0].shot.description,
+                    "suggested_value": "Model walks forward while the outerwear silhouette stays visible.",
+                    "rationale": "Make garment visibility explicit.",
+                    "status": "pending",
+                    "check_ids": []
+                }
+            ]),
+        })
+        .expect("manual review")
+        .id
+    };
+
+    let applied = apply_quality_review_suggestion(
+        &state,
+        ApplyReviewSuggestionInput {
+            review_id: manual_review_id,
+            suggestion_id,
+        },
+    )
+    .expect("apply suggestion");
+    assert_eq!(applied.applied_target_type, "shot");
+    assert_eq!(applied.suggestion.status, "applied");
+    assert_eq!(
+        applied.agent_run.runtime_mode,
+        "local_quality_iteration_bridge"
     );
 }
 
