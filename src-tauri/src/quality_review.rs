@@ -2,14 +2,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::agent_context::build_project_context;
-use crate::error::JoiResult;
+use crate::error::{JoiError, JoiResult};
 use crate::models::{
     AgentRun, AgentRunEvent, CreativeDirection, ProductUnderstanding, PromptPackage, QualityReview,
     Shot,
 };
 use crate::prompt_adapter::prompt_package_view;
 use crate::repositories::{
-    AgentRunCreate, AgentRunEventCreate, QualityReviewCreate, Repository, StoryboardWithShots,
+    AgentRunCreate, AgentRunEventCreate, PromptPackageUpdate, QualityReviewCreate, Repository,
+    ShotUpdate, StoryboardWithShots,
 };
 
 const REVIEW_ROLES: &[&str] = &[
@@ -75,6 +76,22 @@ pub struct QualityReviewGenerationResult {
     pub review: QualityReview,
     pub checks: Vec<QualityReviewCheck>,
     pub suggestions: Vec<QualityReviewSuggestion>,
+    pub agent_run: AgentRun,
+    pub agent_events: Vec<AgentRunEvent>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ApplyReviewSuggestionInput {
+    pub review_id: String,
+    pub suggestion_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApplyReviewSuggestionResult {
+    pub updated_review: QualityReview,
+    pub suggestion: QualityReviewSuggestion,
+    pub applied_target_type: String,
+    pub applied_target_id: String,
     pub agent_run: AgentRun,
     pub agent_events: Vec<AgentRunEvent>,
 }
@@ -149,6 +166,156 @@ pub fn generate_quality_review(
         agent_run,
         agent_events,
     })
+}
+
+pub fn apply_quality_review_suggestion(
+    repo: &Repository<'_>,
+    input: ApplyReviewSuggestionInput,
+    hermes_version: String,
+) -> JoiResult<ApplyReviewSuggestionResult> {
+    let review = repo.get_quality_review(&input.review_id)?;
+    let mut suggestions = suggestions_from_review(&review)?;
+    let index = suggestions
+        .iter()
+        .position(|suggestion| suggestion.id == input.suggestion_id)
+        .ok_or_else(|| {
+            JoiError::NotFound(format!("quality review suggestion {}", input.suggestion_id))
+        })?;
+
+    if suggestions[index].status != QualityReviewSuggestionStatus::Pending.as_str() {
+        return Err(JoiError::Validation(format!(
+            "quality review suggestion {} is not pending",
+            input.suggestion_id
+        )));
+    }
+
+    apply_supported_target(repo, &suggestions[index])?;
+    suggestions[index].status = QualityReviewSuggestionStatus::Applied.as_str().to_string();
+    let applied = suggestions[index].clone();
+    let updated_review =
+        repo.update_quality_review_suggestions(&review.id, suggestion_to_value(&suggestions))?;
+
+    let agent_run = repo.create_agent_run(AgentRunCreate {
+        project_id: review.project_id.clone(),
+        user_goal: format!("Apply quality review suggestion {}.", applied.id),
+        status: "completed".to_string(),
+        runtime_kind: "hermes_core".to_string(),
+        runtime_mode: "local_quality_iteration_bridge".to_string(),
+        runtime_version: hermes_version,
+        roles_json: json!(["reviewer", "storyboard_writer", "prompt_adapter"]),
+        plan_json: json!([
+            {
+                "role": "reviewer",
+                "title": "Validate selected review suggestion",
+                "suggestion_id": applied.id
+            },
+            {
+                "role": "storyboard_writer",
+                "title": "Apply supported target update"
+            }
+        ]),
+        result_summary: format!(
+            "Applied review suggestion {} to {} {}.",
+            applied.id, applied.target_type, applied.target_id
+        ),
+    })?;
+    let agent_events = vec![repo.create_agent_run_event(AgentRunEventCreate {
+        agent_run_id: agent_run.id.clone(),
+        sequence_number: 1,
+        role: "reviewer".to_string(),
+        event_type: "suggestion_applied".to_string(),
+        message: format!("Applied suggestion {}.", applied.id),
+        payload_json: json!({ "suggestion": applied }),
+    })?];
+
+    Ok(ApplyReviewSuggestionResult {
+        updated_review,
+        applied_target_type: applied.target_type.clone(),
+        applied_target_id: applied.target_id.clone(),
+        suggestion: applied,
+        agent_run,
+        agent_events,
+    })
+}
+
+fn suggestions_from_review(review: &QualityReview) -> JoiResult<Vec<QualityReviewSuggestion>> {
+    serde_json::from_value(review.suggestions_json.clone()).map_err(|err| {
+        JoiError::Validation(format!("quality review suggestions are malformed: {err}"))
+    })
+}
+
+fn suggestion_to_value(suggestions: &[QualityReviewSuggestion]) -> Value {
+    json!(suggestions)
+}
+
+fn apply_supported_target(
+    repo: &Repository<'_>,
+    suggestion: &QualityReviewSuggestion,
+) -> JoiResult<()> {
+    match (suggestion.target_type.as_str(), suggestion.field.as_str()) {
+        ("shot", "description") => apply_shot_description(repo, suggestion),
+        ("prompt_package", "prompt_text") => apply_prompt_text(repo, suggestion),
+        (target_type, field) => Err(JoiError::Validation(format!(
+            "review suggestion target is not supported: {target_type}.{field}"
+        ))),
+    }
+}
+
+fn apply_shot_description(
+    repo: &Repository<'_>,
+    suggestion: &QualityReviewSuggestion,
+) -> JoiResult<()> {
+    let shot = repo.get_shot(&suggestion.target_id)?;
+    if shot.is_locked {
+        return Err(JoiError::Validation(
+            "Locked shots cannot be updated from review suggestions".to_string(),
+        ));
+    }
+
+    let garment_focus = metadata_string_or(&shot, "garment_focus", &shot.description);
+    let transition = metadata_string_or(&shot, "transition", "");
+    repo.update_shot(ShotUpdate {
+        id: shot.id,
+        duration_seconds: shot.duration_seconds,
+        visual_description: suggestion.suggested_value.clone(),
+        model_action: shot.model_action,
+        garment_focus,
+        camera_movement: shot.camera_movement,
+        scene: shot.scene,
+        lighting: shot.lighting,
+        transition,
+        subtitle_or_text: shot.subtitle_or_voiceover,
+        rationale: shot.rationale,
+        is_locked: shot.is_locked,
+    })?;
+    Ok(())
+}
+
+fn apply_prompt_text(repo: &Repository<'_>, suggestion: &QualityReviewSuggestion) -> JoiResult<()> {
+    let package = repo.get_prompt_package(&suggestion.target_id)?;
+    if package.is_locked {
+        return Err(JoiError::Validation(
+            "Locked prompt packages cannot be updated from review suggestions".to_string(),
+        ));
+    }
+
+    repo.update_prompt_package(PromptPackageUpdate {
+        id: package.id,
+        prompt_text: suggestion.suggested_value.clone(),
+        negative_prompt: package.negative_prompt,
+        parameters_json: package.parameters_json,
+        is_locked: package.is_locked,
+    })?;
+    Ok(())
+}
+
+fn metadata_string_or(shot: &Shot, field: &str, fallback: &str) -> String {
+    shot.metadata_json
+        .get(field)
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(fallback)
+        .to_string()
 }
 
 fn build_product_terms(
