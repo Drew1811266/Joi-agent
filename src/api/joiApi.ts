@@ -1,6 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type {
+  AgentPlanInput,
+  AgentPlanResult,
+  AgentRunWithEvents,
+  AgentRuntimeStatus,
   Asset,
   BriefUnderstandingInput,
   BriefUnderstandingResult,
@@ -99,4 +103,20 @@ export function listProductUnderstandings(projectId: string): Promise<ProductUnd
 
 export function listCreativeDirections(projectId: string): Promise<CreativeDirection[]> {
   return invoke<CreativeDirection[]>("joi_list_creative_directions", { project_id: projectId });
+}
+
+export function getAgentRuntimeStatus(): Promise<AgentRuntimeStatus> {
+  return invoke<AgentRuntimeStatus>("joi_get_agent_runtime_status");
+}
+
+export function startAgentPlan(input: AgentPlanInput): Promise<AgentPlanResult> {
+  return invoke<AgentPlanResult>("joi_start_agent_plan", { input });
+}
+
+export function getAgentRun(id: string): Promise<AgentRunWithEvents> {
+  return invoke<AgentRunWithEvents>("joi_get_agent_run", { id });
+}
+
+export function listAgentRuns(projectId: string): Promise<AgentRunWithEvents[]> {
+  return invoke<AgentRunWithEvents[]>("joi_list_agent_runs", { project_id: projectId });
 }

@@ -175,3 +175,55 @@ export type ReferenceAssetInput = {
   display_name: string;
   source_uri: string;
 };
+
+export type AgentRuntimeStatus = {
+  runtime_kind: string;
+  runtime_mode: string;
+  hermes_checkout_path: string;
+  hermes_present: boolean;
+  hermes_version: string;
+  phase0_report_present: boolean;
+  ready: boolean;
+  message: string;
+};
+
+export type AgentRun = {
+  id: string;
+  project_id: string;
+  user_goal: string;
+  status: string;
+  runtime_kind: string;
+  runtime_mode: string;
+  runtime_version: string;
+  roles_json: unknown;
+  plan_json: unknown;
+  result_summary: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AgentRunEvent = {
+  id: string;
+  agent_run_id: string;
+  sequence_number: number;
+  role: string;
+  event_type: string;
+  message: string;
+  payload_json: unknown;
+  created_at: string;
+};
+
+export type AgentPlanInput = {
+  project_id: string;
+  user_goal: string;
+};
+
+export type AgentPlanResult = {
+  run: AgentRun;
+  events: AgentRunEvent[];
+};
+
+export type AgentRunWithEvents = {
+  run: AgentRun;
+  events: AgentRunEvent[];
+};

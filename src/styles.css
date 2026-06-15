@@ -459,6 +459,45 @@ form {
   font-size: 13px;
 }
 
+.agent-form {
+  gap: 10px;
+}
+
+.agent-form textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.run-summary {
+  display: grid;
+  gap: 10px;
+}
+
+.run-summary p {
+  color: #39453e;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.event-log {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+  color: #46514b;
+  font-size: 12px;
+}
+
+.event-log li {
+  overflow-wrap: anywhere;
+}
+
+.event-log span {
+  display: block;
+  color: #1d2a22;
+  font-weight: 700;
+}
+
 .toast {
   position: fixed;
   right: 18px;

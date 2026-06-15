@@ -7,7 +7,9 @@ import {
   createReferenceAsset,
   formatError,
   generateBriefUnderstanding,
+  getAgentRuntimeStatus,
   healthCheck,
+  listAgentRuns,
   listAssets,
   listBrands,
   listCreativeDirections,
@@ -16,6 +18,7 @@ import {
   listProjectVersions,
   listProjects,
   saveProjectSnapshot,
+  startAgentPlan,
   updateBrand,
   updateProject,
 } from "./api/joiApi";
@@ -25,6 +28,8 @@ import type { BriefDraft, ReferenceAssetDraft } from "./components/BriefWorkspac
 import { ProjectWorkspace } from "./components/ProjectWorkspace";
 import { TopBar } from "./components/TopBar";
 import type {
+  AgentRunWithEvents,
+  AgentRuntimeStatus,
   Asset,
   Brand,
   BriefUnderstandingResult,
@@ -87,9 +92,14 @@ const emptyReferenceAssetDraft: ReferenceAssetDraft = {
   source_uri: "",
 };
 
+const defaultAgentGoal = "Plan the next content workflow steps for this project";
+
 export default function App() {
   const [activeTab, setActiveTab] = useState("Overview");
   const [activityLog, setActivityLog] = useState<string[]>([]);
+  const [agentGoalDraft, setAgentGoalDraft] = useState(defaultAgentGoal);
+  const [agentRuns, setAgentRuns] = useState<AgentRunWithEvents[]>([]);
+  const [agentRuntimeStatus, setAgentRuntimeStatus] = useState<AgentRuntimeStatus | null>(null);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [brandDraft, setBrandDraft] = useState<BrandDraft>(emptyBrandDraft);
   const [brandMode, setBrandMode] = useState<FormMode>("edit");
@@ -110,8 +120,11 @@ export default function App() {
   const [savingSnapshot, setSavingSnapshot] = useState(false);
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [startingAgentPlan, setStartingAgentPlan] = useState(false);
   const [understandingResult, setUnderstandingResult] = useState<BriefUnderstandingResult | null>(null);
   const [versions, setVersions] = useState<ProjectVersion[]>([]);
+
+  const latestAgentRun = agentRuns[0] ?? null;
 
   const selectedBrand = useMemo(
     () => (brandMode === "edit" ? brands.find((brand) => brand.id === selectedBrandId) ?? null : null),
@@ -172,6 +185,7 @@ export default function App() {
       setReferenceAssetDraft(emptyReferenceAssetDraft);
       setUnderstandingResult(null);
       setAssets([]);
+      setAgentRuns([]);
       setCreativeDirections([]);
       setMemoryEntries([]);
       setProductUnderstandings([]);
@@ -182,8 +196,13 @@ export default function App() {
   async function loadInitialState() {
     try {
       setError(null);
-      const [healthResult, brandList] = await Promise.all([healthCheck(), listBrands()]);
+      const [healthResult, runtimeStatus, brandList] = await Promise.all([
+        healthCheck(),
+        getAgentRuntimeStatus(),
+        listBrands(),
+      ]);
       setHealth(healthResult);
+      setAgentRuntimeStatus(runtimeStatus);
       setBrands(brandList);
       setActivityLog((entries) => [...entries, "Workspace connected to Joi backend."]);
     } catch (loadError) {
@@ -215,18 +234,20 @@ export default function App() {
 
   async function refreshProjectState(projectId: string) {
     try {
-      const [assetList, versionList, projectMemory, understandingList, directionList] = await Promise.all([
+      const [assetList, versionList, projectMemory, understandingList, directionList, runList] = await Promise.all([
         listAssets(projectId),
         listProjectVersions(projectId),
         listMemoryEntries({ scope: "project", brand_id: null, project_id: projectId }),
         listProductUnderstandings(projectId),
         listCreativeDirections(projectId),
+        listAgentRuns(projectId),
       ]);
       setAssets(assetList);
       setVersions(versionList);
       setMemoryEntries(projectMemory);
       setProductUnderstandings(understandingList);
       setCreativeDirections(directionList);
+      setAgentRuns(runList);
     } catch (loadError) {
       setError(formatError(loadError));
     }
@@ -243,6 +264,7 @@ export default function App() {
     setAssets([]);
     setBriefDraft(emptyBriefDraft);
     setCreativeDirections([]);
+    setAgentRuns([]);
     setMemoryEntries([]);
     setProductUnderstandings([]);
     setReferenceAssetDraft(emptyReferenceAssetDraft);
@@ -259,6 +281,7 @@ export default function App() {
     setAssets([]);
     setBriefDraft(emptyBriefDraft);
     setCreativeDirections([]);
+    setAgentRuns([]);
     setMemoryEntries([]);
     setProductUnderstandings([]);
     setReferenceAssetDraft(emptyReferenceAssetDraft);
@@ -460,6 +483,33 @@ export default function App() {
     }
   }
 
+  async function submitAgentPlan() {
+    if (!selectedProject) {
+      setError("Select a project before starting an agent plan.");
+      return;
+    }
+    if (!agentGoalDraft.trim()) {
+      setError("Agent goal is required.");
+      return;
+    }
+
+    try {
+      setStartingAgentPlan(true);
+      setError(null);
+      const result = await startAgentPlan({
+        project_id: selectedProject.id,
+        user_goal: agentGoalDraft,
+      });
+      const runWithEvents = { run: result.run, events: result.events };
+      setAgentRuns((runs) => [runWithEvents, ...runs.filter((item) => item.run.id !== result.run.id)]);
+      setActivityLog((entries) => [...entries, `Started agent plan ${result.run.id}.`]);
+    } catch (submitError) {
+      setError(formatError(submitError));
+    } finally {
+      setStartingAgentPlan(false);
+    }
+  }
+
   return (
     <div className="app-shell">
       <TopBar
@@ -519,7 +569,18 @@ export default function App() {
           versions={versions}
         />
 
-        <AgentPanel activityLog={activityLog} selectedBrand={selectedBrand} selectedProject={selectedProject} />
+        <AgentPanel
+          activityLog={activityLog}
+          agentGoalDraft={agentGoalDraft}
+          agentRuntimeStatus={agentRuntimeStatus}
+          agentRuns={agentRuns}
+          latestAgentRun={latestAgentRun}
+          onAgentGoalChange={setAgentGoalDraft}
+          onStartAgentPlan={submitAgentPlan}
+          selectedBrand={selectedBrand}
+          selectedProject={selectedProject}
+          startingAgentPlan={startingAgentPlan}
+        />
       </div>
 
       {error ? (

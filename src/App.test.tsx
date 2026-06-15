@@ -59,6 +59,55 @@ describe("Joi workspace shell", () => {
         case "joi_list_product_understandings":
         case "joi_list_creative_directions":
           return Promise.resolve([]);
+        case "joi_get_agent_runtime_status":
+          return Promise.resolve({
+            runtime_kind: "hermes_core",
+            runtime_mode: "local_planner_bridge",
+            hermes_checkout_path: "D:/Software Project/Joi-agent/.external/hermes-agent",
+            hermes_present: true,
+            hermes_version: "0.16.0",
+            phase0_report_present: true,
+            ready: true,
+            message: "Hermes Core bridge is ready for local planner mode.",
+          });
+        case "joi_list_agent_runs":
+          return Promise.resolve([]);
+        case "joi_start_agent_plan":
+          return Promise.resolve({
+            run: {
+              id: "run-1",
+              project_id: "project-1",
+              user_goal: "Plan the next content workflow steps",
+              status: "completed",
+              runtime_kind: "hermes_core",
+              runtime_mode: "local_planner_bridge",
+              runtime_version: "0.16.0",
+              roles_json: [
+                "planner",
+                "researcher",
+                "storyboard_writer",
+                "prompt_adapter",
+                "reviewer",
+                "memory_curator",
+              ],
+              plan_json: [{ role: "planner", title: "Confirm brief and material context" }],
+              result_summary: "Created a local planner bridge run for Spring Drop Film.",
+              created_at: "2026-06-15T00:00:00Z",
+              updated_at: "2026-06-15T00:00:00Z",
+            },
+            events: [
+              {
+                id: "event-1",
+                agent_run_id: "run-1",
+                sequence_number: 1,
+                role: "planner",
+                event_type: "context_read",
+                message: "Read saved context for Spring Drop Film.",
+                payload_json: { project_title: "Spring Drop Film" },
+                created_at: "2026-06-15T00:00:00Z",
+              },
+            ],
+          });
         case "joi_save_project_snapshot":
           return Promise.resolve({
             id: "version-1",
@@ -189,6 +238,7 @@ describe("Joi workspace shell", () => {
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith("joi_health_check", undefined);
+      expect(invokeMock).toHaveBeenCalledWith("joi_get_agent_runtime_status", undefined);
       expect(invokeMock).toHaveBeenCalledWith("joi_list_brands", undefined);
       expect(invokeMock).toHaveBeenCalledWith("joi_list_projects", { brand_id: "brand-1" });
     });
@@ -387,5 +437,26 @@ describe("Joi workspace shell", () => {
         },
       });
     });
+  });
+
+  test("starts an agent plan from the Agent panel", async () => {
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "Spring Drop Film" });
+    expect(await screen.findByText("Hermes Core")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Agent goal"), {
+      target: { value: "Plan the next content workflow steps" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /start plan/i }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("joi_start_agent_plan", {
+        input: {
+          project_id: "project-1",
+          user_goal: "Plan the next content workflow steps",
+        },
+      });
+    });
+    expect(await screen.findByText("Read saved context for Spring Drop Film.")).toBeInTheDocument();
   });
 });
