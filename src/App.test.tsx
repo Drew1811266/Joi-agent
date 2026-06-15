@@ -1074,6 +1074,7 @@ describe("Joi workspace shell", () => {
     fireEvent.change(screen.getByLabelText("Markdown report"), {
       target: { value: "# Edited Delivery Report" },
     });
+    expect(screen.getByLabelText("Markdown report")).toHaveValue("# Edited Delivery Report");
     fireEvent.click(screen.getByRole("button", { name: /save report/i }));
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
