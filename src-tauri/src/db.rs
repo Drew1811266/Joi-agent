@@ -30,6 +30,7 @@ impl Database {
 
     pub fn migrate(&self) -> JoiResult<()> {
         self.connection.execute_batch(SCHEMA)?;
+        self.migrate_prompt_packages_optional_shot()?;
         Ok(())
     }
 
@@ -43,6 +44,67 @@ impl Database {
             names.push(row?);
         }
         Ok(names)
+    }
+
+    fn migrate_prompt_packages_optional_shot(&self) -> JoiResult<()> {
+        let shot_id_not_null = {
+            let mut statement = self
+                .connection
+                .prepare("PRAGMA table_info(prompt_packages)")?;
+            let rows = statement.query_map([], |row| {
+                let name: String = row.get(1)?;
+                let not_null: i64 = row.get(3)?;
+                Ok((name, not_null))
+            })?;
+            let mut shot_id_not_null = false;
+            for row in rows {
+                let (name, not_null) = row?;
+                if name == "shot_id" {
+                    shot_id_not_null = not_null == 1;
+                }
+            }
+            shot_id_not_null
+        };
+
+        if !shot_id_not_null {
+            return Ok(());
+        }
+
+        self.connection.execute_batch(
+            r#"
+            DROP TRIGGER IF EXISTS trg_prompt_packages_shot_belongs_to_project_insert;
+            DROP TRIGGER IF EXISTS trg_prompt_packages_shot_belongs_to_project_update;
+            DROP INDEX IF EXISTS idx_prompt_packages_project_id;
+            DROP INDEX IF EXISTS idx_prompt_packages_shot_id;
+            ALTER TABLE prompt_packages RENAME TO prompt_packages_legacy;
+            CREATE TABLE prompt_packages (
+              id TEXT PRIMARY KEY,
+              project_id TEXT NOT NULL,
+              shot_id TEXT,
+              platform TEXT NOT NULL,
+              modality TEXT NOT NULL,
+              prompt_text TEXT NOT NULL DEFAULT '',
+              negative_prompt TEXT NOT NULL DEFAULT '',
+              parameters_json TEXT NOT NULL DEFAULT '{}',
+              is_locked INTEGER NOT NULL DEFAULT 0,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              CHECK (shot_id IS NOT NULL OR modality = 'image'),
+              FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+              FOREIGN KEY (shot_id) REFERENCES shots(id) ON DELETE CASCADE
+            );
+            INSERT INTO prompt_packages (
+              id, project_id, shot_id, platform, modality, prompt_text, negative_prompt,
+              parameters_json, is_locked, created_at, updated_at
+            )
+            SELECT id, project_id, shot_id, platform, modality, prompt_text, negative_prompt,
+                   parameters_json, is_locked, created_at, updated_at
+            FROM prompt_packages_legacy;
+            DROP TABLE prompt_packages_legacy;
+            "#,
+        )?;
+        self.connection.execute_batch(SCHEMA)?;
+        Ok(())
     }
 }
 
@@ -164,7 +226,7 @@ CREATE TABLE IF NOT EXISTS shots (
 CREATE TABLE IF NOT EXISTS prompt_packages (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
-  shot_id TEXT NOT NULL,
+  shot_id TEXT,
   platform TEXT NOT NULL,
   modality TEXT NOT NULL,
   prompt_text TEXT NOT NULL DEFAULT '',
@@ -173,6 +235,7 @@ CREATE TABLE IF NOT EXISTS prompt_packages (
   is_locked INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
+  CHECK (shot_id IS NOT NULL OR modality = 'image'),
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
   FOREIGN KEY (shot_id) REFERENCES shots(id) ON DELETE CASCADE
 );
@@ -241,7 +304,8 @@ CREATE TABLE IF NOT EXISTS agent_run_events (
 CREATE TRIGGER IF NOT EXISTS trg_prompt_packages_shot_belongs_to_project_insert
 BEFORE INSERT ON prompt_packages
 FOR EACH ROW
-WHEN EXISTS (SELECT 1 FROM shots WHERE shots.id = NEW.shot_id)
+WHEN NEW.shot_id IS NOT NULL
+  AND EXISTS (SELECT 1 FROM shots WHERE shots.id = NEW.shot_id)
   AND EXISTS (SELECT 1 FROM projects WHERE projects.id = NEW.project_id)
   AND NOT EXISTS (
     SELECT 1
@@ -257,7 +321,8 @@ END;
 CREATE TRIGGER IF NOT EXISTS trg_prompt_packages_shot_belongs_to_project_update
 BEFORE UPDATE OF project_id, shot_id ON prompt_packages
 FOR EACH ROW
-WHEN EXISTS (SELECT 1 FROM shots WHERE shots.id = NEW.shot_id)
+WHEN NEW.shot_id IS NOT NULL
+  AND EXISTS (SELECT 1 FROM shots WHERE shots.id = NEW.shot_id)
   AND EXISTS (SELECT 1 FROM projects WHERE projects.id = NEW.project_id)
   AND NOT EXISTS (
     SELECT 1

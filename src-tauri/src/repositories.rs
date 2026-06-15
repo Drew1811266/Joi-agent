@@ -144,10 +144,21 @@ pub struct ShotUpdate {
 #[derive(Debug, Clone)]
 pub struct PromptPackageCreate {
     pub project_id: String,
-    pub shot_id: String,
+    pub shot_id: Option<String>,
     pub platform: String,
     pub modality: String,
     pub prompt_text: String,
+    pub negative_prompt: String,
+    pub parameters_json: Value,
+}
+
+#[derive(Debug, Clone)]
+pub struct PromptPackageUpdate {
+    pub id: String,
+    pub prompt_text: String,
+    pub negative_prompt: String,
+    pub parameters_json: Value,
+    pub is_locked: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -836,7 +847,16 @@ impl<'a> Repository<'a> {
         let platform = PromptPlatform::try_from(input.platform.as_str())?;
         let modality = PromptModality::try_from(input.modality.as_str())?;
         validate_prompt_modality(platform, modality)?;
+        validate_required_text("Prompt text", &input.prompt_text)?;
         self.get_project(&input.project_id)?;
+        if input.shot_id.is_none() && modality == PromptModality::Video {
+            return Err(JoiError::Validation(
+                "Video prompt packages require a shot".to_string(),
+            ));
+        }
+        if let Some(shot_id) = input.shot_id.as_deref() {
+            self.get_shot(shot_id)?;
+        }
         let now = Utc::now();
         let prompt = PromptPackage {
             id: new_id(),
@@ -844,9 +864,9 @@ impl<'a> Repository<'a> {
             shot_id: input.shot_id,
             platform: platform.as_str().to_string(),
             modality: modality.as_str().to_string(),
-            prompt_text: input.prompt_text,
-            negative_prompt: String::new(),
-            parameters_json: json!({}),
+            prompt_text: input.prompt_text.trim().to_string(),
+            negative_prompt: input.negative_prompt.trim().to_string(),
+            parameters_json: input.parameters_json,
             is_locked: false,
             created_at: now,
             updated_at: now,
@@ -871,6 +891,46 @@ impl<'a> Repository<'a> {
             ],
         )?;
         Ok(prompt)
+    }
+
+    pub fn get_prompt_package(&self, id: &str) -> JoiResult<PromptPackage> {
+        self.connection
+            .query_row(
+                "SELECT id, project_id, shot_id, platform, modality, prompt_text, negative_prompt,
+                        parameters_json, is_locked, created_at, updated_at
+                 FROM prompt_packages WHERE id = ?1",
+                params![id],
+                map_prompt_package,
+            )
+            .map_err(|err| match err {
+                rusqlite::Error::QueryReturnedNoRows => {
+                    JoiError::NotFound(format!("prompt package {}", id))
+                }
+                other => other.into(),
+            })
+    }
+
+    pub fn update_prompt_package(&self, input: PromptPackageUpdate) -> JoiResult<PromptPackage> {
+        validate_required_text("Prompt text", &input.prompt_text)?;
+        let now = Utc::now();
+        let affected = self.connection.execute(
+            "UPDATE prompt_packages
+             SET prompt_text = ?1, negative_prompt = ?2, parameters_json = ?3,
+                 is_locked = ?4, updated_at = ?5
+             WHERE id = ?6",
+            params![
+                input.prompt_text.trim(),
+                input.negative_prompt.trim(),
+                input.parameters_json.to_string(),
+                if input.is_locked { 1 } else { 0 },
+                now.to_rfc3339(),
+                input.id
+            ],
+        )?;
+        if affected == 0 {
+            return Err(JoiError::NotFound(format!("prompt package {}", input.id)));
+        }
+        self.get_prompt_package(&input.id)
     }
 
     pub fn create_memory_entry(&self, input: MemoryEntryCreate) -> JoiResult<MemoryEntry> {

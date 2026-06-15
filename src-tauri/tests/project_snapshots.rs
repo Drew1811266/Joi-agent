@@ -140,12 +140,31 @@ fn creates_project_snapshot_with_related_sections() {
     let prompt = repo
         .create_prompt_package(PromptPackageCreate {
             project_id: project.id.clone(),
-            shot_id: shot.id.clone(),
+            shot_id: Some(shot.id.clone()),
             platform: "jimeng_video".into(),
             modality: "video".into(),
             prompt_text: "A refined fashion ad shot".into(),
+            negative_prompt: String::new(),
+            parameters_json: json!({
+                "format_version": "joi.prompt_package_parameters.v1",
+                "adapter_id": "jimeng_video"
+            }),
         })
         .expect("prompt package");
+    let image_prompt = repo
+        .create_prompt_package(PromptPackageCreate {
+            project_id: project.id.clone(),
+            shot_id: None,
+            platform: "gpt_image_2".into(),
+            modality: "image".into(),
+            prompt_text: "A campaign still prompt".into(),
+            negative_prompt: "distorted hands".into(),
+            parameters_json: json!({
+                "format_version": "joi.prompt_package_parameters.v1",
+                "adapter_id": "gpt_image_2"
+            }),
+        })
+        .expect("image prompt package");
     let now = Utc::now().to_rfc3339();
     db.connection()
         .execute(
@@ -226,6 +245,11 @@ fn creates_project_snapshot_with_related_sections() {
         snapshot["prompt_packages"][0]["prompt_text"],
         "A refined fashion ad shot"
     );
+    assert!(snapshot["prompt_packages"]
+        .as_array()
+        .expect("prompt packages")
+        .iter()
+        .any(|item| item["id"] == image_prompt.id && item["shot_id"].is_null()));
     assert_eq!(snapshot["memory_entries"][0]["id"], "memory-1");
     assert_eq!(
         snapshot["memory_entries"][0]["content"],

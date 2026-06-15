@@ -5,8 +5,8 @@ use joi_agent_lib::db::Database;
 use joi_agent_lib::error::JoiError;
 use joi_agent_lib::repositories::{
     BrandCreate, CreativeDirectionCreate, ProductUnderstandingCreate, ProjectCreate,
-    PromptPackageCreate, Repository, ResearchReportCreate, ShotCreate, ShotPlanCreate, ShotUpdate,
-    StoryboardCreate,
+    PromptPackageCreate, PromptPackageUpdate, Repository, ResearchReportCreate, ShotCreate,
+    ShotPlanCreate, ShotUpdate, StoryboardCreate,
 };
 use serde_json::json;
 
@@ -165,10 +165,12 @@ fn stores_storyboard_shots_and_prompt_packages() {
     let prompt = repo
         .create_prompt_package(PromptPackageCreate {
             project_id: project_id.clone(),
-            shot_id: shot.id.clone(),
+            shot_id: Some(shot.id.clone()),
             platform: "jimeng_video".into(),
             modality: "video".into(),
             prompt_text: "A refined fashion ad shot".into(),
+            negative_prompt: String::new(),
+            parameters_json: json!({}),
         })
         .expect("prompt");
 
@@ -195,13 +197,109 @@ fn stores_storyboard_shots_and_prompt_packages() {
     assert_eq!(prompts.len(), 1);
     assert_eq!(prompts[0].id, prompt.id);
     assert_eq!(prompts[0].project_id, project_id);
-    assert_eq!(prompts[0].shot_id, shot.id);
+    assert_eq!(prompts[0].shot_id, Some(shot.id));
     assert_eq!(prompts[0].platform, "jimeng_video");
     assert_eq!(prompts[0].modality, "video");
     assert_eq!(prompts[0].prompt_text, "A refined fashion ad shot");
     assert_eq!(prompts[0].negative_prompt, "");
     assert!(!prompts[0].is_locked);
     assert_eq!(prompts[0].parameters_json, json!({}));
+}
+
+#[test]
+fn creates_project_bound_image_prompt_package_with_adapter_metadata() {
+    let app = TestApp::new();
+    let db = Database::open(&app.db_path).expect("open database");
+    db.migrate().expect("migrate");
+    let (repo, project_id) = seeded_repo(&db);
+
+    let prompt = repo
+        .create_prompt_package(PromptPackageCreate {
+            project_id: project_id.clone(),
+            shot_id: None,
+            platform: "gpt_image_2".into(),
+            modality: "image".into(),
+            prompt_text: "Create a realistic fashion campaign image.".into(),
+            negative_prompt: "distorted hands, incorrect garment construction".into(),
+            parameters_json: json!({
+                "format_version": "joi.prompt_package_parameters.v1",
+                "adapter_id": "gpt_image_2",
+                "source_type": "image_brief",
+                "missing_fields": []
+            }),
+        })
+        .expect("image prompt");
+
+    assert_eq!(prompt.project_id, project_id);
+    assert_eq!(prompt.shot_id, None);
+    assert_eq!(prompt.platform, "gpt_image_2");
+    assert_eq!(prompt.modality, "image");
+    assert_eq!(
+        prompt.negative_prompt,
+        "distorted hands, incorrect garment construction"
+    );
+    assert_eq!(prompt.parameters_json["adapter_id"], "gpt_image_2");
+}
+
+#[test]
+fn rejects_video_prompt_without_shot() {
+    let app = TestApp::new();
+    let db = Database::open(&app.db_path).expect("open database");
+    db.migrate().expect("migrate");
+    let (repo, project_id) = seeded_repo(&db);
+
+    let result = repo.create_prompt_package(PromptPackageCreate {
+        project_id,
+        shot_id: None,
+        platform: "jimeng_video".into(),
+        modality: "video".into(),
+        prompt_text: "video prompt".into(),
+        negative_prompt: String::new(),
+        parameters_json: json!({}),
+    });
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn updates_prompt_package_text_negative_prompt_parameters_and_lock() {
+    let app = TestApp::new();
+    let db = Database::open(&app.db_path).expect("open database");
+    db.migrate().expect("migrate");
+    let (repo, project_id) = seeded_repo(&db);
+    let prompt = repo
+        .create_prompt_package(PromptPackageCreate {
+            project_id,
+            shot_id: None,
+            platform: "banana_2_image".into(),
+            modality: "image".into(),
+            prompt_text: "first prompt".into(),
+            negative_prompt: "first negative".into(),
+            parameters_json: json!({"format_version": "joi.prompt_package_parameters.v1"}),
+        })
+        .expect("prompt");
+
+    let updated = repo
+        .update_prompt_package(PromptPackageUpdate {
+            id: prompt.id,
+            prompt_text: "edited prompt".into(),
+            negative_prompt: "edited negative".into(),
+            parameters_json: json!({
+                "format_version": "joi.prompt_package_parameters.v1",
+                "adapter_id": "banana_2_image",
+                "missing_fields": ["lighting"]
+            }),
+            is_locked: true,
+        })
+        .expect("updated prompt");
+
+    assert_eq!(updated.prompt_text, "edited prompt");
+    assert_eq!(updated.negative_prompt, "edited negative");
+    assert!(updated.is_locked);
+    assert_eq!(
+        updated.parameters_json["missing_fields"],
+        json!(["lighting"])
+    );
 }
 
 #[test]
@@ -497,10 +595,12 @@ fn rejects_invalid_boolean_values_when_listing_content() {
     let prompt = repo
         .create_prompt_package(PromptPackageCreate {
             project_id: project_id.clone(),
-            shot_id: shot.id.clone(),
+            shot_id: Some(shot.id.clone()),
             platform: "jimeng_video".into(),
             modality: "video".into(),
             prompt_text: "A refined fashion ad shot".into(),
+            negative_prompt: String::new(),
+            parameters_json: json!({}),
         })
         .expect("prompt");
 
@@ -551,10 +651,12 @@ fn rejects_prompt_platform_modality_mismatch() {
 
     let result = repo.create_prompt_package(PromptPackageCreate {
         project_id,
-        shot_id: shot.id,
+        shot_id: Some(shot.id),
         platform: "banana_2_image".into(),
         modality: "video".into(),
         prompt_text: "bad modality".into(),
+        negative_prompt: String::new(),
+        parameters_json: json!({}),
     });
     assert!(result.is_err());
 }

@@ -206,7 +206,7 @@ pub struct Shot {
 pub struct PromptPackage {
     pub id: String,
     pub project_id: String,
-    pub shot_id: String,
+    pub shot_id: Option<String>,
     pub platform: String,
     pub modality: String,
     pub prompt_text: String,

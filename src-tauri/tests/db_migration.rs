@@ -128,6 +128,28 @@ fn prompt_package_shot_must_belong_to_prompt_project() {
 }
 
 #[test]
+fn prompt_packages_allow_project_bound_image_prompts() {
+    let db = migrated_in_memory_database();
+    insert_brand(&db, "brand-1");
+    insert_project(&db, "project-1", "brand-1");
+    insert_storyboard(&db, "storyboard-1", "project-1");
+    insert_shot(&db, "shot-1", "storyboard-1", 1);
+
+    db.connection()
+        .execute(
+            "INSERT INTO prompt_packages (
+                id, project_id, shot_id, platform, modality, prompt_text, negative_prompt,
+                parameters_json, is_locked, created_at, updated_at
+            ) VALUES (
+                'prompt-image-1', 'project-1', NULL, 'gpt_image_2', 'image',
+                'image prompt', 'negative prompt', '{}', 0, ?1, ?1
+            )",
+            [NOW],
+        )
+        .expect("project-bound image prompt insert");
+}
+
+#[test]
 fn migration_creates_expected_list_and_foreign_key_indexes() {
     let db = migrated_in_memory_database();
     let indexes = index_names(&db);
