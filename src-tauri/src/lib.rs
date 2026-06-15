@@ -11,6 +11,7 @@ pub mod project_package;
 pub mod repositories;
 pub mod research;
 pub mod snapshots;
+pub mod storyboard;
 pub mod understanding;
 
 mod validation;
