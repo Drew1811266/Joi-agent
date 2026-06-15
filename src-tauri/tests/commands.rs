@@ -7,16 +7,17 @@ use common::TestApp;
 use joi_agent_lib::agent_runtime::AgentPlanInput;
 use joi_agent_lib::commands::{
     create_brand, create_memory_entry, create_project, create_reference_asset,
-    generate_brief_understanding, get_agent_runtime_status, get_brand, get_project,
-    joi_health_check, list_agent_runs, list_brands, list_creative_directions, list_memory_entries,
-    list_product_understandings, list_project_versions, list_projects, resolve_workspace_root,
-    save_project_snapshot, start_agent_plan, update_brand, update_project, AppState,
-    AssetImportCommandInput, BrandInput, BrandUpdateInput, MemoryEntryInput, MemoryListInput,
-    ProjectExportCommandInput, ProjectImportCommandInput, ProjectInput, ProjectUpdateInput,
-    ReferenceAssetInput, RestoreVersionInput, SnapshotInput,
+    generate_brief_understanding, generate_research_report, get_agent_runtime_status, get_brand,
+    get_project, joi_health_check, list_agent_runs, list_brands, list_creative_directions,
+    list_memory_entries, list_product_understandings, list_project_versions, list_projects,
+    list_research_reports, resolve_workspace_root, save_project_snapshot, start_agent_plan,
+    update_brand, update_project, AppState, AssetImportCommandInput, BrandInput, BrandUpdateInput,
+    MemoryEntryInput, MemoryListInput, ProjectExportCommandInput, ProjectImportCommandInput,
+    ProjectInput, ProjectUpdateInput, ReferenceAssetInput, RestoreVersionInput, SnapshotInput,
 };
 use joi_agent_lib::db::Database;
 use joi_agent_lib::error::JoiError;
+use joi_agent_lib::research::{ResearchReportInput, ResearchSourceInput};
 use joi_agent_lib::understanding::BriefUnderstandingInput;
 use serde_json::json;
 
@@ -145,6 +146,23 @@ fn command_inputs_round_trip_through_json() {
     }))
     .expect("agent plan input");
     assert_eq!(agent_plan.project_id, "project-1");
+
+    let research_report: ResearchReportInput = serde_json::from_value(json!({
+        "project_id": "project-1",
+        "research_goal": "Find reference angles",
+        "market_focus": "outerwear",
+        "platform_focus": ["jimeng_video", "grok_video"],
+        "source_materials": [
+            {
+                "title": "Reference note",
+                "url": "https://example.com/reference",
+                "source_type": "reference",
+                "excerpt": "Texture details support premium positioning."
+            }
+        ]
+    }))
+    .expect("research report input");
+    assert_eq!(research_report.source_materials[0].title, "Reference note");
 }
 
 #[test]
@@ -440,6 +458,56 @@ fn state_helpers_start_and_list_agent_runs() {
     assert_eq!(runs.len(), 1);
     assert_eq!(runs[0].run.id, result.run.id);
     assert_eq!(runs[0].events.len(), 7);
+}
+
+#[test]
+fn state_helpers_generate_and_list_research_reports() {
+    let (_app, state) = test_state();
+
+    let brand = create_brand(
+        &state,
+        BrandInput {
+            name: "Atelier Joi".to_string(),
+            description: "Premium womenswear".to_string(),
+        },
+    )
+    .expect("create brand");
+    let project = create_project(
+        &state,
+        ProjectInput {
+            brand_id: brand.id,
+            title: "Spring Drop Film".to_string(),
+            advertising_goal: "Launch awareness".to_string(),
+            duration_seconds: 15,
+        },
+    )
+    .expect("create project");
+
+    let result = generate_research_report(
+        &state,
+        ResearchReportInput {
+            project_id: project.id.clone(),
+            research_goal: "Find reference angles".to_string(),
+            market_focus: "outerwear".to_string(),
+            platform_focus: vec!["jimeng_video".to_string(), "grok_video".to_string()],
+            source_materials: vec![ResearchSourceInput {
+                title: "Reference note".to_string(),
+                url: "https://example.com/reference".to_string(),
+                source_type: "reference".to_string(),
+                excerpt: "Texture details support premium positioning.".to_string(),
+            }],
+        },
+    )
+    .expect("generate research report");
+
+    assert_eq!(result.report.project_id, project.id);
+    assert_eq!(result.agent_run.runtime_mode, "local_research_bridge");
+    assert_eq!(result.agent_events.len(), 5);
+
+    let reports = list_research_reports(&state, project.id).expect("list research reports");
+    assert_eq!(reports.len(), 1);
+    assert_eq!(reports[0].id, result.report.id);
+    assert_eq!(reports[0].sources_json[0]["title"], "Reference note");
 }
 
 #[test]

@@ -8,6 +8,7 @@ pub mod hermes_bridge;
 pub mod models;
 pub mod project_package;
 pub mod repositories;
+pub mod research;
 pub mod snapshots;
 pub mod understanding;
 
@@ -59,6 +60,8 @@ pub fn run() {
             commands::joi_generate_brief_understanding,
             commands::joi_list_product_understandings,
             commands::joi_list_creative_directions,
+            commands::joi_generate_research_report,
+            commands::joi_list_research_reports,
             commands::joi_create_reference_asset,
             commands::joi_get_agent_runtime_status,
             commands::joi_start_agent_plan,

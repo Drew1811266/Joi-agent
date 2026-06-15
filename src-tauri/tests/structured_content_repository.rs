@@ -91,6 +91,8 @@ fn stores_storyboard_shots_and_prompt_packages() {
         .create_research_report(ResearchReportCreate {
             project_id: project_id.clone(),
             summary: "Market summary".into(),
+            findings_json: json!([]),
+            sources_json: json!([]),
         })
         .expect("research");
     assert_eq!(research.project_id, project_id);
@@ -199,6 +201,56 @@ fn stores_storyboard_shots_and_prompt_packages() {
     assert_eq!(prompts[0].negative_prompt, "");
     assert!(!prompts[0].is_locked);
     assert_eq!(prompts[0].parameters_json, json!({}));
+}
+
+#[test]
+fn stores_research_report_findings_and_sources() {
+    let app = TestApp::new();
+    let db = Database::open(&app.db_path).expect("open database");
+    db.migrate().expect("migrate");
+    let repo = Repository::new(db.connection());
+    let brand = repo
+        .create_brand(BrandCreate {
+            name: "Atelier Joi".to_string(),
+            description: "Premium womenswear".to_string(),
+        })
+        .unwrap();
+    let project = repo
+        .create_project(ProjectCreate {
+            brand_id: brand.id,
+            title: "Spring Drop Film".to_string(),
+            advertising_goal: "Launch awareness".to_string(),
+            duration_seconds: 15,
+        })
+        .unwrap();
+
+    let report = repo
+        .create_research_report(ResearchReportCreate {
+            project_id: project.id.clone(),
+            summary: "Research summary".to_string(),
+            findings_json: json!([
+                {
+                    "title": "Texture proof point",
+                    "insight": "Fabric closeups should lead the edit",
+                    "source_index": 1
+                }
+            ]),
+            sources_json: json!([
+                {
+                    "index": 1,
+                    "title": "Reference note",
+                    "url": "https://example.com/reference"
+                }
+            ]),
+        })
+        .unwrap();
+
+    let reports = repo.list_research_reports(&project.id).unwrap();
+
+    assert_eq!(reports.len(), 1);
+    assert_eq!(reports[0].id, report.id);
+    assert_eq!(reports[0].findings_json[0]["title"], "Texture proof point");
+    assert_eq!(reports[0].sources_json[0]["title"], "Reference note");
 }
 
 #[test]

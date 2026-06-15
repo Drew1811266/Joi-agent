@@ -13,12 +13,16 @@ use crate::error::{JoiError, JoiResult};
 use crate::hermes_bridge::{inspect_hermes_runtime, AgentRuntimeStatus, HermesRuntimeConfig};
 use crate::models::{
     AgentRun, AgentRunEvent, Asset, Brand, CreativeDirection, MemoryEntry, ProductUnderstanding,
-    Project, ProjectVersion,
+    Project, ProjectVersion, ResearchReport,
 };
 use crate::project_package::{ProjectExportInput, ProjectImportInput, ProjectPackageService};
 use crate::repositories::{
     AssetCreate, BrandCreate, BrandUpdate, MemoryEntryCreate, ProjectCreate, ProjectUpdate,
     Repository,
+};
+use crate::research::{
+    generate_research_report as generate_research_report_service, ResearchReportInput,
+    ResearchReportResult,
 };
 use crate::snapshots::{ProjectSnapshotService, SaveSnapshotInput};
 use crate::understanding::{
@@ -289,6 +293,22 @@ pub fn joi_list_creative_directions(
 }
 
 #[tauri::command(rename_all = "snake_case")]
+pub fn joi_generate_research_report(
+    state: State<'_, AppState>,
+    input: ResearchReportInput,
+) -> JoiResult<ResearchReportResult> {
+    generate_research_report(state.inner(), input)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn joi_list_research_reports(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> JoiResult<Vec<ResearchReport>> {
+    list_research_reports(state.inner(), project_id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
 pub fn joi_create_reference_asset(
     state: State<'_, AppState>,
     input: ReferenceAssetInput,
@@ -497,6 +517,27 @@ pub fn list_creative_directions(
 ) -> JoiResult<Vec<CreativeDirection>> {
     let db = lock_db(state)?;
     Repository::new(db.connection()).list_creative_directions(&project_id)
+}
+
+pub fn generate_research_report(
+    state: &AppState,
+    input: ResearchReportInput,
+) -> JoiResult<ResearchReportResult> {
+    let runtime_status = get_agent_runtime_status(state)?;
+    let db = lock_db(state)?;
+    generate_research_report_service(
+        &Repository::new(db.connection()),
+        input,
+        runtime_status.hermes_version,
+    )
+}
+
+pub fn list_research_reports(
+    state: &AppState,
+    project_id: String,
+) -> JoiResult<Vec<ResearchReport>> {
+    let db = lock_db(state)?;
+    Repository::new(db.connection()).list_research_reports(&project_id)
 }
 
 pub fn create_reference_asset(state: &AppState, input: ReferenceAssetInput) -> JoiResult<Asset> {

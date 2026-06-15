@@ -96,6 +96,8 @@ fn creates_project_snapshot_with_related_sections() {
         .create_research_report(ResearchReportCreate {
             project_id: project.id.clone(),
             summary: "Market summary".into(),
+            findings_json: json!([]),
+            sources_json: json!([]),
         })
         .expect("research report");
     let understanding = repo

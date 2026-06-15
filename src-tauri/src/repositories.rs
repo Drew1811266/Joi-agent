@@ -59,6 +59,8 @@ pub struct AssetCreate {
 pub struct ResearchReportCreate {
     pub project_id: String,
     pub summary: String,
+    pub findings_json: Value,
+    pub sources_json: Value,
 }
 
 #[derive(Debug, Clone)]
@@ -446,8 +448,8 @@ impl<'a> Repository<'a> {
             id: new_id(),
             project_id: input.project_id,
             summary: input.summary,
-            findings_json: json!([]),
-            sources_json: json!([]),
+            findings_json: input.findings_json,
+            sources_json: input.sources_json,
             created_at: now,
             updated_at: now,
         };
