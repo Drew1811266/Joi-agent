@@ -3,6 +3,7 @@ pub mod agent_runtime;
 pub mod assets;
 pub mod commands;
 pub mod db;
+pub mod delivery_report;
 pub mod error;
 pub mod hermes_bridge;
 pub mod memory_curation;
