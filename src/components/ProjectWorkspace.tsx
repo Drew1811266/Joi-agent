@@ -1,0 +1,276 @@
+import type { FormEvent } from "react";
+
+import { EmptyState } from "./EmptyState";
+import { MetricStrip } from "./MetricStrip";
+import type { Asset, Brand, MemoryEntry, Project, ProjectVersion } from "../types/joi";
+
+type ProjectWorkspaceProps = {
+  activeTab: string;
+  assets: Asset[];
+  brandDraft: {
+    name: string;
+    description: string;
+  };
+  memoryDraft: {
+    content: string;
+    source: string;
+  };
+  memoryEntries: MemoryEntry[];
+  onBrandDraftChange: (field: "name" | "description", value: string) => void;
+  onMemoryDraftChange: (field: "content" | "source", value: string) => void;
+  onProjectDraftChange: (field: "title" | "advertising_goal" | "duration_seconds", value: string) => void;
+  onSubmitBrand: () => void;
+  onSubmitMemory: () => void;
+  onSubmitProject: () => void;
+  projectDraft: {
+    title: string;
+    advertising_goal: string;
+    duration_seconds: string;
+  };
+  selectedBrand: Brand | null;
+  selectedProject: Project | null;
+  versions: ProjectVersion[];
+};
+
+export function ProjectWorkspace({
+  activeTab,
+  assets,
+  brandDraft,
+  memoryDraft,
+  memoryEntries,
+  onBrandDraftChange,
+  onMemoryDraftChange,
+  onProjectDraftChange,
+  onSubmitBrand,
+  onSubmitMemory,
+  onSubmitProject,
+  projectDraft,
+  selectedBrand,
+  selectedProject,
+  versions,
+}: ProjectWorkspaceProps) {
+  return (
+    <main aria-label="Project workspace" className="workspace-main">
+      <section className="workspace-header">
+        <div>
+          <p className="eyebrow">{activeTab}</p>
+          <h1>{selectedProject?.title ?? "Create a fashion advertising project"}</h1>
+          <p className="muted">
+            {selectedProject
+              ? selectedProject.advertising_goal
+              : "Set up brand and project context before generating briefs, storyboards, prompts, and reports."}
+          </p>
+        </div>
+        <MetricStrip
+          metrics={[
+            { label: "Assets", value: assets.length },
+            { label: "Memory", value: memoryEntries.length },
+            { label: "Versions", value: versions.length },
+            { label: "Duration", value: selectedProject ? `${selectedProject.duration_seconds}s` : "--" },
+          ]}
+        />
+      </section>
+
+      {activeTab === "Overview" ? (
+        <div className="workspace-grid">
+          <section className="workspace-panel">
+            <h2>Brand Setup</h2>
+            <form onSubmit={submit(onSubmitBrand)}>
+              <label>
+                Brand name
+                <input
+                  onChange={(event) => onBrandDraftChange("name", event.target.value)}
+                  placeholder="Atelier Joi"
+                  value={brandDraft.name}
+                />
+              </label>
+              <label>
+                Description
+                <textarea
+                  onChange={(event) => onBrandDraftChange("description", event.target.value)}
+                  placeholder="Editorial womenswear, premium fabrics, clean studio lighting"
+                  rows={3}
+                  value={brandDraft.description}
+                />
+              </label>
+              <button type="submit">{selectedBrand ? "Update Brand" : "Create Brand"}</button>
+            </form>
+          </section>
+
+          <section className="workspace-panel">
+            <h2>Project Setup</h2>
+            <form onSubmit={submit(onSubmitProject)}>
+              <label>
+                Project title
+                <input
+                  disabled={!selectedBrand}
+                  onChange={(event) => onProjectDraftChange("title", event.target.value)}
+                  placeholder="15s spring launch film"
+                  value={projectDraft.title}
+                />
+              </label>
+              <label>
+                Advertising goal
+                <textarea
+                  disabled={!selectedBrand}
+                  onChange={(event) => onProjectDraftChange("advertising_goal", event.target.value)}
+                  placeholder="Drive awareness for the new outerwear collection"
+                  rows={3}
+                  value={projectDraft.advertising_goal}
+                />
+              </label>
+              <label>
+                Duration seconds
+                <input
+                  disabled={!selectedBrand}
+                  min="1"
+                  onChange={(event) => onProjectDraftChange("duration_seconds", event.target.value)}
+                  type="number"
+                  value={projectDraft.duration_seconds}
+                />
+              </label>
+              <button disabled={!selectedBrand} type="submit">
+                {selectedProject ? "Update Project" : "Create Project"}
+              </button>
+            </form>
+          </section>
+
+          <section className="workspace-panel wide">
+            <h2>Workflow Map</h2>
+            <div className="workflow-map">
+              {["Brief", "Research", "Creative Direction", "Storyboard", "Prompts", "Delivery"].map(
+                (step) => (
+                  <div className="workflow-step" key={step}>
+                    <span>{step}</span>
+                    <small>{step === "Brief" ? "Next" : "Prepared"}</small>
+                  </div>
+                ),
+              )}
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {activeTab === "Assets" ? <AssetsPanel assets={assets} /> : null}
+      {activeTab === "Memory" ? (
+        <MemoryPanel
+          memoryDraft={memoryDraft}
+          memoryEntries={memoryEntries}
+          onMemoryDraftChange={onMemoryDraftChange}
+          onSubmitMemory={onSubmitMemory}
+          selectedProject={selectedProject}
+        />
+      ) : null}
+      {activeTab === "Versions" ? <VersionsPanel versions={versions} /> : null}
+      {!["Overview", "Assets", "Memory", "Versions"].includes(activeTab) ? (
+        <EmptyState
+          body="This workspace section is reserved for the next content workflow milestone."
+          title={`${activeTab} workspace`}
+        />
+      ) : null}
+    </main>
+  );
+}
+
+function AssetsPanel({ assets }: { assets: Asset[] }) {
+  if (assets.length === 0) {
+    return <EmptyState body="Imported project assets will appear here." title="No assets yet" />;
+  }
+  return (
+    <section className="workspace-panel wide">
+      <h2>Assets</h2>
+      <div className="data-list">
+        {assets.map((asset) => (
+          <article className="data-row" key={asset.id}>
+            <strong>{asset.display_name}</strong>
+            <span>{asset.kind}</span>
+            <small>{asset.mime_type} · {asset.relative_path}</small>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function MemoryPanel({
+  memoryDraft,
+  memoryEntries,
+  onMemoryDraftChange,
+  onSubmitMemory,
+  selectedProject,
+}: {
+  memoryDraft: { content: string; source: string };
+  memoryEntries: MemoryEntry[];
+  onMemoryDraftChange: (field: "content" | "source", value: string) => void;
+  onSubmitMemory: () => void;
+  selectedProject: Project | null;
+}) {
+  return (
+    <section className="workspace-panel wide">
+      <h2>Memory</h2>
+      <form className="inline-form" onSubmit={submit(onSubmitMemory)}>
+        <label>
+          Project memory
+          <input
+            disabled={!selectedProject}
+            onChange={(event) => onMemoryDraftChange("content", event.target.value)}
+            placeholder="Keep fabric texture visible in close-up shots"
+            value={memoryDraft.content}
+          />
+        </label>
+        <label>
+          Source
+          <input
+            disabled={!selectedProject}
+            onChange={(event) => onMemoryDraftChange("source", event.target.value)}
+            placeholder="user note"
+            value={memoryDraft.source}
+          />
+        </label>
+        <button disabled={!selectedProject} type="submit">
+          Add Memory
+        </button>
+      </form>
+      <div className="data-list">
+        {memoryEntries.length === 0 ? (
+          <p className="muted">Accepted and proposed memory entries will appear here.</p>
+        ) : (
+          memoryEntries.map((entry) => (
+            <article className="data-row" key={entry.id}>
+              <strong>{entry.content}</strong>
+              <span>{entry.scope} · {entry.status}</span>
+              <small>{entry.source}</small>
+            </article>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
+function VersionsPanel({ versions }: { versions: ProjectVersion[] }) {
+  if (versions.length === 0) {
+    return <EmptyState body="Use Save Snapshot after selecting a project." title="No versions yet" />;
+  }
+  return (
+    <section className="workspace-panel wide">
+      <h2>Versions</h2>
+      <div className="data-list">
+        {versions.map((version) => (
+          <article className="data-row" key={version.id}>
+            <strong>Version {version.version_number}</strong>
+            <span>{version.label || "Untitled snapshot"}</span>
+            <small>{version.change_reason || "No change reason"}</small>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function submit(action: () => void) {
+  return (event: FormEvent) => {
+    event.preventDefault();
+    action();
+  };
+}
