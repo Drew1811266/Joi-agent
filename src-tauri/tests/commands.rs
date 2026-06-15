@@ -8,18 +8,20 @@ use joi_agent_lib::agent_runtime::AgentPlanInput;
 use joi_agent_lib::commands::{
     create_brand, create_memory_entry, create_project, create_reference_asset,
     generate_brief_understanding, generate_memory_candidates, generate_research_report,
-    get_agent_runtime_status, get_brand, get_project, joi_health_check, list_agent_runs,
-    list_brands, list_creative_directions, list_memory_entries, list_product_understandings,
-    list_project_versions, list_projects, list_research_reports, resolve_workspace_root,
-    save_project_snapshot, start_agent_plan, update_brand, update_memory_status, update_project,
-    AppState, AssetImportCommandInput, BrandInput, BrandUpdateInput, MemoryEntryInput,
-    MemoryListInput, MemoryStatusInput, ProjectExportCommandInput, ProjectImportCommandInput,
-    ProjectInput, ProjectUpdateInput, ReferenceAssetInput, RestoreVersionInput, SnapshotInput,
+    generate_storyboard, get_agent_runtime_status, get_brand, get_project, joi_health_check,
+    list_agent_runs, list_brands, list_creative_directions, list_memory_entries,
+    list_product_understandings, list_project_versions, list_projects, list_research_reports,
+    list_storyboards, regenerate_shot, resolve_workspace_root, save_project_snapshot,
+    start_agent_plan, update_brand, update_memory_status, update_project, update_shot, AppState,
+    AssetImportCommandInput, BrandInput, BrandUpdateInput, MemoryEntryInput, MemoryListInput,
+    MemoryStatusInput, ProjectExportCommandInput, ProjectImportCommandInput, ProjectInput,
+    ProjectUpdateInput, ReferenceAssetInput, RestoreVersionInput, ShotUpdateInput, SnapshotInput,
 };
 use joi_agent_lib::db::Database;
 use joi_agent_lib::error::JoiError;
 use joi_agent_lib::memory_curation::MemoryCurationInput;
 use joi_agent_lib::research::{ResearchReportInput, ResearchSourceInput};
+use joi_agent_lib::storyboard::{ShotRegenerationInput, StoryboardGenerationInput};
 use joi_agent_lib::understanding::BriefUnderstandingInput;
 use serde_json::json;
 
@@ -180,6 +182,41 @@ fn command_inputs_round_trip_through_json() {
     }))
     .expect("memory status input");
     assert_eq!(memory_status.status, "accepted");
+
+    let storyboard_generation: StoryboardGenerationInput = serde_json::from_value(json!({
+        "project_id": "project-1",
+        "user_direction": "Keep tactile product proof before the walk.",
+        "preferred_duration_seconds": 15,
+        "preferred_shot_count": 5
+    }))
+    .expect("storyboard generation input");
+    assert_eq!(storyboard_generation.preferred_shot_count, Some(5));
+
+    let shot_update: ShotUpdateInput = serde_json::from_value(json!({
+        "id": "shot-1",
+        "duration_seconds": 3,
+        "visual_description": "Close fabric texture detail.",
+        "model_action": "Model lifts sleeve edge.",
+        "garment_focus": "fabric texture",
+        "camera_movement": "macro slide",
+        "scene": "studio insert",
+        "lighting": "soft side light",
+        "transition": "match cut",
+        "subtitle_or_text": "Texture that moves",
+        "rationale": "Clarifies product proof.",
+        "is_locked": false
+    }))
+    .expect("shot update input");
+    assert_eq!(shot_update.garment_focus, "fabric texture");
+
+    let shot_regeneration: ShotRegenerationInput = serde_json::from_value(json!({
+        "project_id": "project-1",
+        "storyboard_id": "storyboard-1",
+        "shot_id": "shot-1",
+        "revision_note": "Make the garment proof clearer."
+    }))
+    .expect("shot regeneration input");
+    assert_eq!(shot_regeneration.shot_id, "shot-1");
 }
 
 #[test]
@@ -601,6 +638,103 @@ fn state_helpers_generate_memory_candidates_and_update_status() {
     .expect("list memory");
     assert_eq!(memories.len(), 1);
     assert_eq!(memories[0].status, "accepted");
+}
+
+#[test]
+fn state_helpers_generate_list_update_and_regenerate_storyboard() {
+    let (_app, state) = test_state();
+    let brand = create_brand(
+        &state,
+        BrandInput {
+            name: "Atelier Joi".to_string(),
+            description: "Premium womenswear".to_string(),
+        },
+    )
+    .expect("brand");
+    let project = create_project(
+        &state,
+        ProjectInput {
+            brand_id: brand.id,
+            title: "Spring Drop Film".to_string(),
+            advertising_goal: "Launch awareness for a lightweight trench".to_string(),
+            duration_seconds: 15,
+        },
+    )
+    .expect("project");
+    generate_brief_understanding(
+        &state,
+        BriefUnderstandingInput {
+            project_id: project.id.clone(),
+            brief_text: "15 second outerwear launch ad".to_string(),
+            product_name: "Lightweight trench".to_string(),
+            category: "outerwear".to_string(),
+            audience: "urban commuters".to_string(),
+            target_platforms: vec!["jimeng_video".to_string(), "grok_video".to_string()],
+            selling_points_text: "water-resistant cotton, soft structure, easy movement"
+                .to_string(),
+            visual_direction: "clean studio walk with close fabric texture".to_string(),
+            constraints_text: "avoid heavy winter styling".to_string(),
+            reference_asset_ids: Vec::new(),
+        },
+    )
+    .expect("understanding");
+
+    let result = generate_storyboard(
+        &state,
+        StoryboardGenerationInput {
+            project_id: project.id.clone(),
+            user_direction: "Make the opening tactile.".to_string(),
+            preferred_duration_seconds: Some(15),
+            preferred_shot_count: Some(5),
+        },
+    )
+    .expect("generate storyboard");
+
+    assert_eq!(result.shots.len(), 5);
+    assert_eq!(result.agent_run.runtime_mode, "local_storyboard_bridge");
+
+    let storyboards = list_storyboards(&state, project.id.clone()).expect("list storyboards");
+    assert_eq!(storyboards.len(), 1);
+    assert_eq!(storyboards[0].shots.len(), 5);
+
+    let edited = update_shot(
+        &state,
+        ShotUpdateInput {
+            id: result.shots[0].shot.id.clone(),
+            duration_seconds: result.shots[0].shot.duration_seconds,
+            visual_description: "Edited opening product entrance.".to_string(),
+            model_action: "Model steps into frame.".to_string(),
+            garment_focus: "trench silhouette".to_string(),
+            camera_movement: "slow push".to_string(),
+            scene: "studio".to_string(),
+            lighting: "soft side light".to_string(),
+            transition: "cut on movement".to_string(),
+            subtitle_or_text: "Built for changing weather".to_string(),
+            rationale: "User edit makes opening clearer.".to_string(),
+            is_locked: false,
+        },
+    )
+    .expect("update shot");
+    assert_eq!(
+        edited.visual_description,
+        "Edited opening product entrance."
+    );
+
+    let regenerated = regenerate_shot(
+        &state,
+        ShotRegenerationInput {
+            project_id: project.id,
+            storyboard_id: result.storyboard.id,
+            shot_id: result.shots[1].shot.id.clone(),
+            revision_note: "Make this shot a clearer macro fabric insert.".to_string(),
+        },
+    )
+    .expect("regenerate shot");
+    assert_eq!(
+        regenerated.agent_run.runtime_mode,
+        "local_storyboard_regeneration_bridge"
+    );
+    assert_eq!(regenerated.shot.shot.id, result.shots[1].shot.id);
 }
 
 #[test]

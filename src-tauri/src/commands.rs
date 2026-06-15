@@ -19,13 +19,18 @@ use crate::models::{
 use crate::project_package::{ProjectExportInput, ProjectImportInput, ProjectPackageService};
 use crate::repositories::{
     AssetCreate, BrandCreate, BrandUpdate, MemoryEntryCreate, MemoryStatusUpdate, ProjectCreate,
-    ProjectUpdate, Repository,
+    ProjectUpdate, Repository, ShotUpdate, StoryboardWithShots,
 };
 use crate::research::{
     generate_research_report as generate_research_report_service, ResearchReportInput,
     ResearchReportResult,
 };
 use crate::snapshots::{ProjectSnapshotService, SaveSnapshotInput};
+use crate::storyboard::{
+    generate_storyboard as generate_storyboard_service, regenerate_shot as regenerate_shot_service,
+    ShotRegenerationInput, ShotRegenerationResult, StoryboardGenerationInput,
+    StoryboardGenerationResult, StoryboardShotView,
+};
 use crate::understanding::{
     generate_brief_understanding as generate_understanding, BriefUnderstandingInput,
     BriefUnderstandingResult,
@@ -135,6 +140,22 @@ pub struct MemoryListInput {
 pub struct MemoryStatusInput {
     pub id: String,
     pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ShotUpdateInput {
+    pub id: String,
+    pub duration_seconds: i64,
+    pub visual_description: String,
+    pub model_action: String,
+    pub garment_focus: String,
+    pub camera_movement: String,
+    pub scene: String,
+    pub lighting: String,
+    pub transition: String,
+    pub subtitle_or_text: String,
+    pub rationale: String,
+    pub is_locked: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -289,6 +310,38 @@ pub fn joi_update_memory_status(
     input: MemoryStatusInput,
 ) -> JoiResult<MemoryEntry> {
     update_memory_status(state.inner(), input)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn joi_generate_storyboard(
+    state: State<'_, AppState>,
+    input: StoryboardGenerationInput,
+) -> JoiResult<StoryboardGenerationResult> {
+    generate_storyboard(state.inner(), input)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn joi_list_storyboards(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> JoiResult<Vec<StoryboardWithShots>> {
+    list_storyboards(state.inner(), project_id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn joi_update_shot(
+    state: State<'_, AppState>,
+    input: ShotUpdateInput,
+) -> JoiResult<StoryboardShotView> {
+    update_shot(state.inner(), input)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn joi_regenerate_shot(
+    state: State<'_, AppState>,
+    input: ShotRegenerationInput,
+) -> JoiResult<ShotRegenerationResult> {
+    regenerate_shot(state.inner(), input)
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -537,6 +590,59 @@ pub fn update_memory_status(state: &AppState, input: MemoryStatusInput) -> JoiRe
         id: input.id,
         status: input.status,
     })
+}
+
+pub fn generate_storyboard(
+    state: &AppState,
+    input: StoryboardGenerationInput,
+) -> JoiResult<StoryboardGenerationResult> {
+    let runtime_status = get_agent_runtime_status(state)?;
+    let db = lock_db(state)?;
+    generate_storyboard_service(
+        &Repository::new(db.connection()),
+        input,
+        runtime_status.hermes_version,
+    )
+}
+
+pub fn list_storyboards(
+    state: &AppState,
+    project_id: String,
+) -> JoiResult<Vec<StoryboardWithShots>> {
+    let db = lock_db(state)?;
+    Repository::new(db.connection()).list_storyboards_with_typed_shots(&project_id)
+}
+
+pub fn update_shot(state: &AppState, input: ShotUpdateInput) -> JoiResult<StoryboardShotView> {
+    let db = lock_db(state)?;
+    let shot = Repository::new(db.connection()).update_shot(ShotUpdate {
+        id: input.id,
+        duration_seconds: input.duration_seconds,
+        visual_description: input.visual_description,
+        model_action: input.model_action,
+        garment_focus: input.garment_focus,
+        camera_movement: input.camera_movement,
+        scene: input.scene,
+        lighting: input.lighting,
+        transition: input.transition,
+        subtitle_or_text: input.subtitle_or_text,
+        rationale: input.rationale,
+        is_locked: input.is_locked,
+    })?;
+    Ok(StoryboardShotView::from_shot(shot))
+}
+
+pub fn regenerate_shot(
+    state: &AppState,
+    input: ShotRegenerationInput,
+) -> JoiResult<ShotRegenerationResult> {
+    let runtime_status = get_agent_runtime_status(state)?;
+    let db = lock_db(state)?;
+    regenerate_shot_service(
+        &Repository::new(db.connection()),
+        input,
+        runtime_status.hermes_version,
+    )
 }
 
 pub fn generate_brief_understanding(
