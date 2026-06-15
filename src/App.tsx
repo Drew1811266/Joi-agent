@@ -16,6 +16,7 @@ import {
   generateResearchReport,
   generateStoryboard,
   getAgentRuntimeStatus,
+  getBetaWorkflowStatus,
   getPromptAdapterProfiles,
   healthCheck,
   listAgentRuns,
@@ -33,6 +34,7 @@ import {
   listStoryboards,
   previewDeliveryPackage,
   regenerateShot,
+  runBetaWorkflow,
   saveProjectSnapshot,
   startAgentPlan,
   updateBrand,
@@ -44,6 +46,7 @@ import {
 } from "./api/joiApi";
 import { AgentPanel } from "./components/AgentPanel";
 import { BrandProjectRail } from "./components/BrandProjectRail";
+import type { BetaWorkflowDraft } from "./components/BetaWorkflowPanel";
 import type { BriefDraft, ReferenceAssetDraft } from "./components/BriefWorkspace";
 import type { MemoryCurationDraft } from "./components/MemoryWorkspace";
 import type { DeliveryDraft } from "./components/DeliveryWorkspace";
@@ -57,6 +60,7 @@ import type {
   AgentRunWithEvents,
   AgentRuntimeStatus,
   Asset,
+  BetaWorkflowStatusResult,
   Brand,
   BriefUnderstandingResult,
   CreativeDirection,
@@ -172,6 +176,16 @@ const emptyReviewDraft: ReviewDraft = {
   user_direction: "",
 };
 
+const emptyBetaDraft: BetaWorkflowDraft = {
+  user_direction: "Complete a usable beta pass for this fashion ad project.",
+  image_brief: "Full-body fashion model photo, clean warm studio lighting, visible garment texture.",
+  reference_title: "Benchmark reference note",
+  reference_url: "https://example.com/fashion-reference",
+  reference_excerpt: "Texture close-ups and restrained studio motion support premium fashion positioning.",
+  memory_feedback: "Keep tactile garment proof and brand-consistent styling as reusable project preferences.",
+  save_snapshot: true,
+};
+
 const defaultAgentGoal = "Plan the next content workflow steps for this project";
 
 export default function App() {
@@ -182,6 +196,8 @@ export default function App() {
   const [agentRuntimeStatus, setAgentRuntimeStatus] = useState<AgentRuntimeStatus | null>(null);
   const [adapterProfiles, setAdapterProfiles] = useState<PromptAdapterProfile[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [betaDraft, setBetaDraft] = useState<BetaWorkflowDraft>(emptyBetaDraft);
+  const [betaStatus, setBetaStatus] = useState<BetaWorkflowStatusResult | null>(null);
   const [brandDraft, setBrandDraft] = useState<BrandDraft>(emptyBrandDraft);
   const [brandMode, setBrandMode] = useState<FormMode>("edit");
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -223,6 +239,7 @@ export default function App() {
   const [qualityReviews, setQualityReviews] = useState<QualityReview[]>([]);
   const [reviewDraft, setReviewDraft] = useState<ReviewDraft>(emptyReviewDraft);
   const [regeneratingShotId, setRegeneratingShotId] = useState<string | null>(null);
+  const [runningBetaWorkflow, setRunningBetaWorkflow] = useState(false);
   const [savingDeliveryReportId, setSavingDeliveryReportId] = useState<string | null>(null);
   const [savingPromptId, setSavingPromptId] = useState<string | null>(null);
   const [savingSnapshot, setSavingSnapshot] = useState(false);
@@ -282,6 +299,7 @@ export default function App() {
 
   useEffect(() => {
     if (selectedProject) {
+      setBetaStatus(null);
       setProjectDraft({
         title: selectedProject.title,
         advertising_goal: selectedProject.advertising_goal,
@@ -311,6 +329,7 @@ export default function App() {
       void refreshProjectState(selectedProject.id);
     } else {
       setProjectDraft(emptyProjectDraft);
+      setBetaStatus(null);
       setBriefDraft(emptyBriefDraft);
       setDeliveryDraft(emptyDeliveryDraft);
       setDeliveryReports([]);
@@ -395,6 +414,7 @@ export default function App() {
         qualityReviewList,
         deliveryReportList,
         runList,
+        workflowStatus,
       ] = await Promise.all([
         listAssets(projectId),
         listProjectVersions(projectId),
@@ -407,6 +427,7 @@ export default function App() {
         listQualityReviews(projectId),
         listDeliveryReports(projectId),
         listAgentRuns(projectId),
+        getBetaWorkflowStatus(projectId),
       ]);
       setAssets(assetList);
       setVersions(versionList);
@@ -419,6 +440,7 @@ export default function App() {
       setQualityReviews(qualityReviewList);
       setDeliveryReports(deliveryReportList);
       setAgentRuns(runList);
+      setBetaStatus(workflowStatus);
     } catch (loadError) {
       setError(formatError(loadError));
     }
@@ -433,6 +455,7 @@ export default function App() {
     setProjectDraft(emptyProjectDraft);
     setProjects([]);
     setAssets([]);
+    setBetaStatus(null);
     setBriefDraft(emptyBriefDraft);
     setCreativeDirections([]);
     setDeliveryDraft(emptyDeliveryDraft);
@@ -465,6 +488,7 @@ export default function App() {
   function startNewProject() {
     setProjectMode("create");
     setSelectedProjectId(null);
+    setBetaStatus(null);
     setProjectDraft(emptyProjectDraft);
     setAssets([]);
     setBriefDraft(emptyBriefDraft);
@@ -984,6 +1008,56 @@ export default function App() {
     setReviewDraft((draft) => ({ ...draft, [field]: value }));
   }
 
+  function updateBetaDraft(field: keyof BetaWorkflowDraft, value: string | boolean) {
+    setBetaDraft((draft) => ({ ...draft, [field]: value }));
+  }
+
+  async function submitBetaWorkflow() {
+    if (!selectedProject) {
+      setError("Select a project before running the beta workflow.");
+      return;
+    }
+
+    try {
+      setRunningBetaWorkflow(true);
+      setError(null);
+      const referenceSources =
+        betaDraft.reference_title.trim() && betaDraft.reference_excerpt.trim()
+          ? [
+              {
+                title: betaDraft.reference_title,
+                url: betaDraft.reference_url || "https://example.com/fashion-reference",
+                source_type: "reference",
+                excerpt: betaDraft.reference_excerpt,
+              },
+            ]
+          : [];
+      const result = await runBetaWorkflow({
+        project_id: selectedProject.id,
+        user_direction: betaDraft.user_direction,
+        image_brief: betaDraft.image_brief,
+        reference_sources: referenceSources,
+        memory_feedback: betaDraft.memory_feedback,
+        save_snapshot: betaDraft.save_snapshot,
+      });
+      await refreshProjectState(selectedProject.id);
+      setBetaStatus(result.status);
+      setPackagePreview(result.package_preview);
+      setAgentRuns((runs) => [
+        { run: result.agent_run, events: result.agent_events },
+        ...runs.filter((item) => item.run.id !== result.agent_run.id),
+      ]);
+      setActivityLog((entries) => [
+        ...entries,
+        `Beta workflow generated ${result.generated_steps.length} step(s).`,
+      ]);
+    } catch (submitError) {
+      setError(formatError(submitError));
+    } finally {
+      setRunningBetaWorkflow(false);
+    }
+  }
+
   async function submitQualityReview() {
     if (!selectedProject) {
       setError("Select a project before generating a quality review.");
@@ -1237,6 +1311,8 @@ export default function App() {
           adapterProfiles={adapterProfiles}
           applyingSuggestionId={applyingSuggestionId}
           assets={assets}
+          betaDraft={betaDraft}
+          betaStatus={betaStatus}
           brandDraft={brandDraft}
           briefDraft={briefDraft}
           creativeDirections={creativeDirections}
@@ -1251,6 +1327,7 @@ export default function App() {
           generatingResearch={generatingResearch}
           memoryCurationDraft={memoryCurationDraft}
           memoryCurationResult={memoryCurationResult}
+          onBetaDraftChange={updateBetaDraft}
           onBriefDraftChange={(field, value) => setBriefDraft((draft) => ({ ...draft, [field]: value }))}
           onApplyReviewSuggestion={applyReviewSuggestion}
           onDeliveryDraftChange={(field, value) => setDeliveryDraft((draft) => ({ ...draft, [field]: value }))}
@@ -1278,6 +1355,7 @@ export default function App() {
             setStoryboardDraft((draft) => ({ ...draft, [field]: value }))
           }
           onSubmitBrand={submitBrand}
+          onRunBetaWorkflow={submitBetaWorkflow}
           onSubmitBriefUnderstanding={submitBriefUnderstanding}
           onSubmitDeliveryReport={submitDeliveryReport}
           onSubmitImagePrompts={submitImagePrompts}
@@ -1311,6 +1389,7 @@ export default function App() {
           qualityReviews={qualityReviews}
           reviewDraft={reviewDraft}
           regeneratingShotId={regeneratingShotId}
+          runningBetaWorkflow={runningBetaWorkflow}
           savingDeliveryReportId={savingDeliveryReportId}
           savingPromptId={savingPromptId}
           savingShotId={savingShotId}

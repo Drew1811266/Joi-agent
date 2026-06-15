@@ -5,16 +5,18 @@ use std::sync::Mutex;
 
 use common::TestApp;
 use joi_agent_lib::agent_runtime::AgentPlanInput;
+use joi_agent_lib::beta_workflow::BetaWorkflowRunInput;
 use joi_agent_lib::commands::{
     apply_quality_review_suggestion, create_brand, create_memory_entry, create_project,
     create_reference_asset, export_project, generate_brief_understanding, generate_delivery_report,
     generate_memory_candidates, generate_prompt_packages, generate_quality_review,
-    generate_research_report, generate_storyboard, get_agent_runtime_status, get_brand,
-    get_project, get_prompt_adapter_profiles, joi_health_check, list_agent_runs, list_brands,
-    list_creative_directions, list_delivery_reports, list_memory_entries,
-    list_product_understandings, list_project_versions, list_projects, list_prompt_packages,
-    list_quality_reviews, list_research_reports, list_storyboards, preview_delivery_package,
-    regenerate_shot, resolve_workspace_root, save_project_snapshot, start_agent_plan, update_brand,
+    generate_research_report, generate_storyboard, get_agent_runtime_status,
+    get_beta_workflow_status, get_brand, get_project, get_prompt_adapter_profiles,
+    joi_health_check, list_agent_runs, list_brands, list_creative_directions,
+    list_delivery_reports, list_memory_entries, list_product_understandings, list_project_versions,
+    list_projects, list_prompt_packages, list_quality_reviews, list_research_reports,
+    list_storyboards, preview_delivery_package, regenerate_shot, resolve_workspace_root,
+    run_beta_workflow_command, save_project_snapshot, start_agent_plan, update_brand,
     update_delivery_report, update_memory_status, update_project, update_prompt_package,
     update_shot, AppState, AssetImportCommandInput, BrandInput, BrandUpdateInput,
     DeliveryPackagePreviewInput, DeliveryReportUpdateInput, MemoryEntryInput, MemoryListInput,
@@ -1144,6 +1146,73 @@ fn quality_review_commands_generate_list_and_apply_suggestions() {
         applied.agent_run.runtime_mode,
         "local_quality_iteration_bridge"
     );
+}
+
+#[test]
+fn beta_workflow_commands_report_status_and_run() {
+    let (_app, state) = test_state();
+    let brand = create_brand(
+        &state,
+        BrandInput {
+            name: "Atelier Joi".to_string(),
+            description: "Premium womenswear, tactile textures, warm studio.".to_string(),
+        },
+    )
+    .expect("brand");
+    let project = create_project(
+        &state,
+        ProjectInput {
+            brand_id: brand.id.clone(),
+            title: "Spring Outerwear Launch".to_string(),
+            advertising_goal: "Create a 15 second launch ad.".to_string(),
+            duration_seconds: 15,
+        },
+    )
+    .expect("project");
+    let memory = create_memory_entry(
+        &state,
+        MemoryEntryInput {
+            scope: "project".to_string(),
+            brand_id: Some(brand.id),
+            project_id: Some(project.id.clone()),
+            content: "Open with tactile proof.".to_string(),
+            source: "benchmark".to_string(),
+        },
+    )
+    .expect("memory");
+    update_memory_status(
+        &state,
+        MemoryStatusInput {
+            id: memory.id,
+            status: "accepted".to_string(),
+        },
+    )
+    .expect("accept memory");
+
+    let before = get_beta_workflow_status(&state, project.id.clone()).expect("before status");
+    assert!(!before.ready);
+
+    let result = run_beta_workflow_command(
+        &state,
+        BetaWorkflowRunInput {
+            project_id: project.id.clone(),
+            user_direction: "Complete the beta workflow.".to_string(),
+            image_brief: "Full-body model photo, warm studio, visible trench texture.".to_string(),
+            reference_sources: vec![ResearchSourceInput {
+                title: "Reference note".to_string(),
+                url: "https://example.com/reference".to_string(),
+                source_type: "reference".to_string(),
+                excerpt: "Texture close-ups support premium positioning.".to_string(),
+            }],
+            memory_feedback: "Keep tactile proof.".to_string(),
+            save_snapshot: true,
+        },
+    )
+    .expect("beta run");
+
+    assert!(result.status.ready);
+    assert!(result.delivery_report_id.is_some());
+    assert!(result.snapshot_id.is_some());
 }
 
 #[test]

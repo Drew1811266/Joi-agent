@@ -1,6 +1,7 @@
 pub mod agent_context;
 pub mod agent_runtime;
 pub mod assets;
+pub mod beta_workflow;
 pub mod commands;
 pub mod db;
 pub mod delivery_report;
@@ -75,6 +76,8 @@ pub fn run() {
             commands::joi_generate_quality_review,
             commands::joi_list_quality_reviews,
             commands::joi_apply_quality_review_suggestion,
+            commands::joi_get_beta_workflow_status,
+            commands::joi_run_beta_workflow,
             commands::joi_generate_delivery_report,
             commands::joi_list_delivery_reports,
             commands::joi_update_delivery_report,

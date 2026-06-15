@@ -243,6 +243,10 @@ impl<'a> Repository<'a> {
         Self { connection }
     }
 
+    pub fn connection(&self) -> &Connection {
+        self.connection
+    }
+
     pub fn create_brand(&self, input: BrandCreate) -> JoiResult<Brand> {
         validate_required_text("Brand name", &input.name)?;
         let now = Utc::now();

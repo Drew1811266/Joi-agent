@@ -324,6 +324,77 @@ const mockQualityReviewResult = {
   agent_events: [],
 };
 
+function mockBetaWorkflowStatus() {
+  return {
+    project_id: "project-1",
+    ready: false,
+    score: 62,
+    next_action: "Generate storyboard",
+    warnings: ["Generate a source-backed research report."],
+    steps: [
+      {
+        id: "project_setup",
+        title: "Project setup",
+        status: "complete",
+        source_count: 1,
+        target_tab: "Overview",
+        action_label: "Edit project",
+        message: "Brand and project context are saved.",
+      },
+      {
+        id: "storyboard",
+        title: "Storyboard",
+        status: "action_required",
+        source_count: 0,
+        target_tab: "Storyboard",
+        action_label: "Generate storyboard",
+        message: "Generate a 15-30 second storyboard.",
+      },
+    ],
+  };
+}
+
+function mockBetaWorkflowRunResult() {
+  const status = mockBetaWorkflowStatus();
+  return {
+    status: {
+      ...status,
+      ready: true,
+      score: 96,
+      next_action: "Review beta package",
+      steps: status.steps.map((step) => ({ ...step, status: "complete" })),
+      warnings: [],
+    },
+    generated_steps: [
+      "storyboard",
+      "video_prompts",
+      "image_prompts",
+      "quality_review",
+      "delivery_report",
+      "snapshot",
+    ],
+    skipped_steps: ["research"],
+    delivery_report_id: "delivery-report-1",
+    package_preview: mockDeliveryReportResult().package_preview,
+    snapshot_id: "version-beta",
+    agent_run: {
+      id: "run-beta",
+      project_id: "project-1",
+      user_goal: "Run Joi 0.20 usable beta workflow.",
+      status: "completed",
+      runtime_kind: "hermes_core",
+      runtime_mode: "local_beta_workflow_bridge",
+      runtime_version: "0.20.0",
+      roles_json: ["planner"],
+      plan_json: [],
+      result_summary: "Completed beta workflow.",
+      created_at: "2026-06-15T00:00:00Z",
+      updated_at: "2026-06-15T00:00:00Z",
+    },
+    agent_events: [],
+  };
+}
+
 describe("Joi workspace shell", () => {
   beforeEach(() => {
     invokeMock.mockReset();
@@ -723,6 +794,10 @@ describe("Joi workspace shell", () => {
             },
             agent_events: [],
           });
+        case "joi_get_beta_workflow_status":
+          return Promise.resolve(mockBetaWorkflowStatus());
+        case "joi_run_beta_workflow":
+          return Promise.resolve(mockBetaWorkflowRunResult());
         case "joi_generate_delivery_report":
           return Promise.resolve(mockDeliveryReportResult());
         case "joi_update_delivery_report":
@@ -782,6 +857,34 @@ describe("Joi workspace shell", () => {
         },
       });
     });
+  });
+
+  test("shows and runs the beta workflow from overview", async () => {
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "Spring Drop Film" });
+    expect(await screen.findByRole("heading", { name: "Beta Workflow" })).toBeInTheDocument();
+    expect(screen.getByText("Generate a 15-30 second storyboard.")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Beta direction"), {
+      target: { value: "Complete the beta benchmark." },
+    });
+    fireEvent.change(screen.getByLabelText("Beta image brief"), {
+      target: { value: "Full-body model photo, warm studio." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /run beta workflow/i }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("joi_run_beta_workflow", {
+        input: expect.objectContaining({
+          project_id: "project-1",
+          user_direction: "Complete the beta benchmark.",
+          image_brief: "Full-body model photo, warm studio.",
+          save_snapshot: true,
+        }),
+      });
+    });
+    expect(await screen.findByText("Beta ready")).toBeInTheDocument();
   });
 
   test("creates project memory from the memory workspace", async () => {
