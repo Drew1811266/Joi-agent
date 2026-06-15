@@ -56,7 +56,13 @@ import type {
   StoryboardWithShots,
 } from "../types/joi";
 
+export const DESKTOP_BACKEND_UNAVAILABLE_MESSAGE =
+  "Joi desktop backend is unavailable in this browser preview. Launch the Tauri desktop app to use workspace commands.";
+
 export function formatError(error: unknown): string {
+  if (isDesktopBackendUnavailableError(error)) {
+    return DESKTOP_BACKEND_UNAVAILABLE_MESSAGE;
+  }
   if (error instanceof Error) {
     return error.message;
   }
@@ -68,6 +74,15 @@ export function formatError(error: unknown): string {
   } catch {
     return "Unknown error";
   }
+}
+
+function isDesktopBackendUnavailableError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  return (
+    message.includes("Cannot read properties of undefined (reading 'invoke')") ||
+    message.includes("__TAURI_INTERNALS__") ||
+    message.includes("invoke is not a function")
+  );
 }
 
 export function healthCheck(): Promise<HealthResponse> {

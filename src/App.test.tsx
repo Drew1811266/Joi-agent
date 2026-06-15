@@ -2,12 +2,21 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import App from "./App";
+import { DESKTOP_BACKEND_UNAVAILABLE_MESSAGE, formatError } from "./api/joiApi";
 
 const invokeMock = vi.fn();
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (command: string, payload?: unknown) => invokeMock(command, payload),
 }));
+
+describe("formatError", () => {
+  test("formats missing Tauri backend errors for browser preview", () => {
+    expect(formatError(new TypeError("Cannot read properties of undefined (reading 'invoke')"))).toBe(
+      DESKTOP_BACKEND_UNAVAILABLE_MESSAGE,
+    );
+  });
+});
 
 const mockStoryboardGenerationResult = {
   storyboard: {
