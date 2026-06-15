@@ -4,11 +4,16 @@ use std::sync::{Mutex, MutexGuard};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
+use crate::agent_runtime::{
+    start_agent_plan as start_local_agent_plan, AgentPlanInput, AgentPlanResult,
+};
 use crate::assets::{AssetImportInput, AssetService};
 use crate::db::Database;
 use crate::error::{JoiError, JoiResult};
+use crate::hermes_bridge::{inspect_hermes_runtime, AgentRuntimeStatus, HermesRuntimeConfig};
 use crate::models::{
-    Asset, Brand, CreativeDirection, MemoryEntry, ProductUnderstanding, Project, ProjectVersion,
+    AgentRun, AgentRunEvent, Asset, Brand, CreativeDirection, MemoryEntry, ProductUnderstanding,
+    Project, ProjectVersion,
 };
 use crate::project_package::{ProjectExportInput, ProjectImportInput, ProjectPackageService};
 use crate::repositories::{
@@ -127,6 +132,12 @@ pub struct ReferenceAssetInput {
     pub kind: String,
     pub display_name: String,
     pub source_uri: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentRunWithEvents {
+    pub run: AgentRun,
+    pub events: Vec<AgentRunEvent>,
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -283,6 +294,32 @@ pub fn joi_create_reference_asset(
     input: ReferenceAssetInput,
 ) -> JoiResult<Asset> {
     create_reference_asset(state.inner(), input)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn joi_get_agent_runtime_status(state: State<'_, AppState>) -> JoiResult<AgentRuntimeStatus> {
+    get_agent_runtime_status(state.inner())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn joi_start_agent_plan(
+    state: State<'_, AppState>,
+    input: AgentPlanInput,
+) -> JoiResult<AgentPlanResult> {
+    start_agent_plan(state.inner(), input)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn joi_get_agent_run(state: State<'_, AppState>, id: String) -> JoiResult<AgentRunWithEvents> {
+    get_agent_run(state.inner(), id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn joi_list_agent_runs(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> JoiResult<Vec<AgentRunWithEvents>> {
+    list_agent_runs(state.inner(), project_id)
 }
 
 pub fn create_brand(state: &AppState, input: BrandInput) -> JoiResult<Brand> {
@@ -485,6 +522,49 @@ pub fn create_reference_asset(state: &AppState, input: ReferenceAssetInput) -> J
         file_size_bytes: 0,
         sha256: String::new(),
     })
+}
+
+pub fn get_agent_runtime_status(_state: &AppState) -> JoiResult<AgentRuntimeStatus> {
+    let cwd = std::env::current_dir()?;
+    Ok(inspect_hermes_runtime(HermesRuntimeConfig {
+        checkout_path: cwd.join(".external").join("hermes-agent"),
+        phase0_report_path: cwd
+            .join("docs")
+            .join("superpowers")
+            .join("reports")
+            .join("hermes-phase0-report.md"),
+        runtime_mode: "local_planner_bridge".to_string(),
+    }))
+}
+
+pub fn start_agent_plan(state: &AppState, input: AgentPlanInput) -> JoiResult<AgentPlanResult> {
+    let runtime_status = get_agent_runtime_status(state)?;
+    let db = lock_db(state)?;
+    start_local_agent_plan(
+        &Repository::new(db.connection()),
+        input,
+        runtime_status.hermes_version,
+    )
+}
+
+pub fn get_agent_run(state: &AppState, id: String) -> JoiResult<AgentRunWithEvents> {
+    let db = lock_db(state)?;
+    let repo = Repository::new(db.connection());
+    let run = repo.get_agent_run(&id)?;
+    let events = repo.list_agent_run_events(&run.id)?;
+    Ok(AgentRunWithEvents { run, events })
+}
+
+pub fn list_agent_runs(state: &AppState, project_id: String) -> JoiResult<Vec<AgentRunWithEvents>> {
+    let db = lock_db(state)?;
+    let repo = Repository::new(db.connection());
+    let runs = repo.list_agent_runs(&project_id)?;
+    let mut runs_with_events = Vec::with_capacity(runs.len());
+    for run in runs {
+        let events = repo.list_agent_run_events(&run.id)?;
+        runs_with_events.push(AgentRunWithEvents { run, events });
+    }
+    Ok(runs_with_events)
 }
 
 fn lock_db(state: &AppState) -> JoiResult<MutexGuard<'_, Database>> {

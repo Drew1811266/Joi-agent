@@ -4,14 +4,16 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use common::TestApp;
+use joi_agent_lib::agent_runtime::AgentPlanInput;
 use joi_agent_lib::commands::{
     create_brand, create_memory_entry, create_project, create_reference_asset,
-    generate_brief_understanding, get_brand, get_project, joi_health_check, list_brands,
-    list_creative_directions, list_memory_entries, list_product_understandings,
-    list_project_versions, list_projects, save_project_snapshot, update_brand, update_project,
-    AppState, AssetImportCommandInput, BrandInput, BrandUpdateInput, MemoryEntryInput,
-    MemoryListInput, ProjectExportCommandInput, ProjectImportCommandInput, ProjectInput,
-    ProjectUpdateInput, ReferenceAssetInput, RestoreVersionInput, SnapshotInput,
+    generate_brief_understanding, get_agent_runtime_status, get_brand, get_project,
+    joi_health_check, list_agent_runs, list_brands, list_creative_directions, list_memory_entries,
+    list_product_understandings, list_project_versions, list_projects, save_project_snapshot,
+    start_agent_plan, update_brand, update_project, AppState, AssetImportCommandInput, BrandInput,
+    BrandUpdateInput, MemoryEntryInput, MemoryListInput, ProjectExportCommandInput,
+    ProjectImportCommandInput, ProjectInput, ProjectUpdateInput, ReferenceAssetInput,
+    RestoreVersionInput, SnapshotInput,
 };
 use joi_agent_lib::db::Database;
 use joi_agent_lib::error::JoiError;
@@ -136,6 +138,13 @@ fn command_inputs_round_trip_through_json() {
     }))
     .expect("memory list input");
     assert_eq!(list_memory.brand_id.as_deref(), Some("brand-1"));
+
+    let agent_plan: AgentPlanInput = serde_json::from_value(json!({
+        "project_id": "project-1",
+        "user_goal": "Plan the next content workflow steps"
+    }))
+    .expect("agent plan input");
+    assert_eq!(agent_plan.project_id, "project-1");
 }
 
 #[test]
@@ -247,7 +256,10 @@ fn generates_brief_understanding_and_lists_saved_records() {
     )
     .unwrap();
 
-    assert_eq!(result.product_understanding.product_name, "Lightweight trench");
+    assert_eq!(
+        result.product_understanding.product_name,
+        "Lightweight trench"
+    );
     assert_eq!(
         result.selling_points,
         vec!["water-resistant cotton", "soft structure"]
@@ -384,4 +396,48 @@ fn update_helpers_return_not_found_for_missing_ids() {
     assert!(
         matches!(project_error, JoiError::NotFound(message) if message == "project missing-project")
     );
+}
+
+#[test]
+fn state_helpers_start_and_list_agent_runs() {
+    let (_app, state) = test_state();
+
+    let brand = create_brand(
+        &state,
+        BrandInput {
+            name: "Atelier Joi".to_string(),
+            description: "Premium womenswear".to_string(),
+        },
+    )
+    .expect("create brand");
+    let project = create_project(
+        &state,
+        ProjectInput {
+            brand_id: brand.id,
+            title: "Spring Drop Film".to_string(),
+            advertising_goal: "Launch awareness".to_string(),
+            duration_seconds: 15,
+        },
+    )
+    .expect("create project");
+
+    let runtime_status = get_agent_runtime_status(&state).expect("runtime status");
+    assert_eq!(runtime_status.runtime_kind, "hermes_core");
+    assert_eq!(runtime_status.runtime_mode, "local_planner_bridge");
+
+    let result = start_agent_plan(
+        &state,
+        AgentPlanInput {
+            project_id: project.id.clone(),
+            user_goal: "Plan the next content workflow steps".to_string(),
+        },
+    )
+    .expect("start agent plan");
+    assert_eq!(result.events.len(), 7);
+    assert_eq!(result.run.user_goal, "Plan the next content workflow steps");
+
+    let runs = list_agent_runs(&state, project.id).expect("list agent runs");
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].run.id, result.run.id);
+    assert_eq!(runs[0].events.len(), 7);
 }

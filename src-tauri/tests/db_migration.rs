@@ -24,6 +24,8 @@ fn migration_creates_full_phase1_schema() {
         "prompt_packages",
         "project_versions",
         "memory_entries",
+        "agent_runs",
+        "agent_run_events",
     ] {
         assert!(
             tables.contains(&expected.to_string()),
@@ -144,6 +146,8 @@ fn migration_creates_expected_list_and_foreign_key_indexes() {
         "idx_memory_entries_scope",
         "idx_memory_entries_brand_id",
         "idx_memory_entries_project_id",
+        "idx_agent_runs_project_id",
+        "idx_agent_run_events_agent_run_id",
     ] {
         assert!(
             indexes.contains(&expected.to_string()),

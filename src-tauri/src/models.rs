@@ -246,3 +246,31 @@ pub struct MemoryEntry {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentRun {
+    pub id: String,
+    pub project_id: String,
+    pub user_goal: String,
+    pub status: String,
+    pub runtime_kind: String,
+    pub runtime_mode: String,
+    pub runtime_version: String,
+    pub roles_json: Value,
+    pub plan_json: Value,
+    pub result_summary: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentRunEvent {
+    pub id: String,
+    pub agent_run_id: String,
+    pub sequence_number: i64,
+    pub role: String,
+    pub event_type: String,
+    pub message: String,
+    pub payload_json: Value,
+    pub created_at: DateTime<Utc>,
+}

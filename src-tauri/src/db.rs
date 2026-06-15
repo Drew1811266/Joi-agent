@@ -209,6 +209,35 @@ CREATE TABLE IF NOT EXISTS memory_entries (
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS agent_runs (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  user_goal TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'completed',
+  runtime_kind TEXT NOT NULL DEFAULT 'hermes_core',
+  runtime_mode TEXT NOT NULL DEFAULT 'local_planner_bridge',
+  runtime_version TEXT NOT NULL DEFAULT '',
+  roles_json TEXT NOT NULL DEFAULT '[]',
+  plan_json TEXT NOT NULL DEFAULT '[]',
+  result_summary TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS agent_run_events (
+  id TEXT PRIMARY KEY,
+  agent_run_id TEXT NOT NULL,
+  sequence_number INTEGER NOT NULL,
+  role TEXT NOT NULL DEFAULT '',
+  event_type TEXT NOT NULL DEFAULT '',
+  message TEXT NOT NULL DEFAULT '',
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (agent_run_id) REFERENCES agent_runs(id) ON DELETE CASCADE,
+  UNIQUE(agent_run_id, sequence_number)
+);
+
 CREATE TRIGGER IF NOT EXISTS trg_prompt_packages_shot_belongs_to_project_insert
 BEFORE INSERT ON prompt_packages
 FOR EACH ROW
@@ -254,4 +283,6 @@ CREATE INDEX IF NOT EXISTS idx_project_versions_project_id ON project_versions(p
 CREATE INDEX IF NOT EXISTS idx_memory_entries_scope ON memory_entries(scope);
 CREATE INDEX IF NOT EXISTS idx_memory_entries_brand_id ON memory_entries(brand_id);
 CREATE INDEX IF NOT EXISTS idx_memory_entries_project_id ON memory_entries(project_id);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_project_id ON agent_runs(project_id);
+CREATE INDEX IF NOT EXISTS idx_agent_run_events_agent_run_id ON agent_run_events(agent_run_id);
 "#;

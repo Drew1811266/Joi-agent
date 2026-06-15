@@ -1,7 +1,10 @@
+pub mod agent_context;
+pub mod agent_runtime;
 pub mod assets;
 pub mod commands;
 pub mod db;
 pub mod error;
+pub mod hermes_bridge;
 pub mod models;
 pub mod project_package;
 pub mod repositories;
@@ -56,7 +59,11 @@ pub fn run() {
             commands::joi_generate_brief_understanding,
             commands::joi_list_product_understandings,
             commands::joi_list_creative_directions,
-            commands::joi_create_reference_asset
+            commands::joi_create_reference_asset,
+            commands::joi_get_agent_runtime_status,
+            commands::joi_start_agent_plan,
+            commands::joi_get_agent_run,
+            commands::joi_list_agent_runs
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Joi Agent");

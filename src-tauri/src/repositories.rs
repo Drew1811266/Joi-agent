@@ -1,12 +1,12 @@
 use chrono::Utc;
 use rusqlite::{params, Connection};
-use serde_json::json;
+use serde_json::{json, Value};
 
 use crate::error::{JoiError, JoiResult};
 use crate::models::{
-    new_id, Asset, AssetKind, Brand, CreativeDirection, MemoryEntry, MemoryScope, MemoryStatus,
-    ProductUnderstanding, Project, ProjectVersion, PromptModality, PromptPackage, PromptPlatform,
-    ResearchReport, Shot, Storyboard,
+    new_id, AgentRun, AgentRunEvent, Asset, AssetKind, Brand, CreativeDirection, MemoryEntry,
+    MemoryScope, MemoryStatus, ProductUnderstanding, Project, ProjectVersion, PromptModality,
+    PromptPackage, PromptPlatform, ResearchReport, Shot, Storyboard,
 };
 use crate::validation::{validate_non_negative, validate_prompt_modality, validate_required_text};
 
@@ -114,6 +114,29 @@ pub struct MemoryEntryCreate {
     pub project_id: Option<String>,
     pub content: String,
     pub source: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct AgentRunCreate {
+    pub project_id: String,
+    pub user_goal: String,
+    pub status: String,
+    pub runtime_kind: String,
+    pub runtime_mode: String,
+    pub runtime_version: String,
+    pub roles_json: Value,
+    pub plan_json: Value,
+    pub result_summary: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct AgentRunEventCreate {
+    pub agent_run_id: String,
+    pub sequence_number: i64,
+    pub role: String,
+    pub event_type: String,
+    pub message: String,
+    pub payload_json: Value,
 }
 
 impl<'a> Repository<'a> {
@@ -721,6 +744,119 @@ impl<'a> Repository<'a> {
         Ok(memory)
     }
 
+    pub fn create_agent_run(&self, input: AgentRunCreate) -> JoiResult<AgentRun> {
+        validate_required_text("Agent goal", &input.user_goal)?;
+        self.get_project(&input.project_id)?;
+        let now = Utc::now();
+        let run = AgentRun {
+            id: new_id(),
+            project_id: input.project_id,
+            user_goal: input.user_goal.trim().to_string(),
+            status: input.status,
+            runtime_kind: input.runtime_kind,
+            runtime_mode: input.runtime_mode,
+            runtime_version: input.runtime_version,
+            roles_json: input.roles_json,
+            plan_json: input.plan_json,
+            result_summary: input.result_summary,
+            created_at: now,
+            updated_at: now,
+        };
+        self.connection.execute(
+            "INSERT INTO agent_runs (
+                id, project_id, user_goal, status, runtime_kind, runtime_mode, runtime_version,
+                roles_json, plan_json, result_summary, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            params![
+                run.id,
+                run.project_id,
+                run.user_goal,
+                run.status,
+                run.runtime_kind,
+                run.runtime_mode,
+                run.runtime_version,
+                run.roles_json.to_string(),
+                run.plan_json.to_string(),
+                run.result_summary,
+                run.created_at.to_rfc3339(),
+                run.updated_at.to_rfc3339()
+            ],
+        )?;
+        Ok(run)
+    }
+
+    pub fn get_agent_run(&self, id: &str) -> JoiResult<AgentRun> {
+        self.connection
+            .query_row(
+                "SELECT id, project_id, user_goal, status, runtime_kind, runtime_mode,
+                        runtime_version, roles_json, plan_json, result_summary, created_at, updated_at
+                 FROM agent_runs WHERE id = ?1",
+                params![id],
+                map_agent_run,
+            )
+            .map_err(|err| match err {
+                rusqlite::Error::QueryReturnedNoRows => {
+                    JoiError::NotFound(format!("agent run {}", id))
+                }
+                other => other.into(),
+            })
+    }
+
+    pub fn list_agent_runs(&self, project_id: &str) -> JoiResult<Vec<AgentRun>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, project_id, user_goal, status, runtime_kind, runtime_mode,
+                    runtime_version, roles_json, plan_json, result_summary, created_at, updated_at
+             FROM agent_runs WHERE project_id = ?1 ORDER BY created_at DESC, id DESC",
+        )?;
+        let rows = statement.query_map(params![project_id], map_agent_run)?;
+        collect_rows(rows)
+    }
+
+    pub fn create_agent_run_event(&self, input: AgentRunEventCreate) -> JoiResult<AgentRunEvent> {
+        if input.sequence_number <= 0 {
+            return Err(JoiError::Validation(
+                "Agent event sequence number must be positive".to_string(),
+            ));
+        }
+        self.get_agent_run(&input.agent_run_id)?;
+        let now = Utc::now();
+        let event = AgentRunEvent {
+            id: new_id(),
+            agent_run_id: input.agent_run_id,
+            sequence_number: input.sequence_number,
+            role: input.role,
+            event_type: input.event_type,
+            message: input.message,
+            payload_json: input.payload_json,
+            created_at: now,
+        };
+        self.connection.execute(
+            "INSERT INTO agent_run_events (
+                id, agent_run_id, sequence_number, role, event_type, message, payload_json, created_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                event.id,
+                event.agent_run_id,
+                event.sequence_number,
+                event.role,
+                event.event_type,
+                event.message,
+                event.payload_json.to_string(),
+                event.created_at.to_rfc3339()
+            ],
+        )?;
+        Ok(event)
+    }
+
+    pub fn list_agent_run_events(&self, agent_run_id: &str) -> JoiResult<Vec<AgentRunEvent>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, agent_run_id, sequence_number, role, event_type, message, payload_json, created_at
+             FROM agent_run_events WHERE agent_run_id = ?1 ORDER BY sequence_number ASC",
+        )?;
+        let rows = statement.query_map(params![agent_run_id], map_agent_run_event)?;
+        collect_rows(rows)
+    }
+
     pub fn list_storyboards(&self, project_id: &str) -> JoiResult<Vec<Storyboard>> {
         let mut statement = self.connection.prepare(
             "SELECT id, project_id, title, duration_seconds, created_at, updated_at
@@ -1046,5 +1182,35 @@ fn map_memory_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<MemoryEntry> {
         status: row.get(9)?,
         created_at: parse_time(row.get(10)?, 10)?,
         updated_at: parse_time(row.get(11)?, 11)?,
+    })
+}
+
+fn map_agent_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<AgentRun> {
+    Ok(AgentRun {
+        id: row.get(0)?,
+        project_id: row.get(1)?,
+        user_goal: row.get(2)?,
+        status: row.get(3)?,
+        runtime_kind: row.get(4)?,
+        runtime_mode: row.get(5)?,
+        runtime_version: row.get(6)?,
+        roles_json: parse_json(row.get(7)?, 7)?,
+        plan_json: parse_json(row.get(8)?, 8)?,
+        result_summary: row.get(9)?,
+        created_at: parse_time(row.get(10)?, 10)?,
+        updated_at: parse_time(row.get(11)?, 11)?,
+    })
+}
+
+fn map_agent_run_event(row: &rusqlite::Row<'_>) -> rusqlite::Result<AgentRunEvent> {
+    Ok(AgentRunEvent {
+        id: row.get(0)?,
+        agent_run_id: row.get(1)?,
+        sequence_number: row.get(2)?,
+        role: row.get(3)?,
+        event_type: row.get(4)?,
+        message: row.get(5)?,
+        payload_json: parse_json(row.get(6)?, 6)?,
+        created_at: parse_time(row.get(7)?, 7)?,
     })
 }
