@@ -17,9 +17,14 @@ use crate::models::{
     Project, ProjectVersion, ResearchReport,
 };
 use crate::project_package::{ProjectExportInput, ProjectImportInput, ProjectPackageService};
+use crate::prompt_adapter::{
+    generate_prompt_packages as generate_prompt_packages_service, prompt_adapter_profiles,
+    prompt_package_view, PromptAdapterProfile, PromptGenerationInput, PromptGenerationResult,
+    PromptPackageView,
+};
 use crate::repositories::{
     AssetCreate, BrandCreate, BrandUpdate, MemoryEntryCreate, MemoryStatusUpdate, ProjectCreate,
-    ProjectUpdate, Repository, ShotUpdate, StoryboardWithShots,
+    ProjectUpdate, PromptPackageUpdate, Repository, ShotUpdate, StoryboardWithShots,
 };
 use crate::research::{
     generate_research_report as generate_research_report_service, ResearchReportInput,
@@ -155,6 +160,15 @@ pub struct ShotUpdateInput {
     pub transition: String,
     pub subtitle_or_text: String,
     pub rationale: String,
+    pub is_locked: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PromptPackageUpdateInput {
+    pub id: String,
+    pub prompt_text: String,
+    pub negative_prompt: String,
+    pub parameters_json: serde_json::Value,
     pub is_locked: bool,
 }
 
@@ -342,6 +356,35 @@ pub fn joi_regenerate_shot(
     input: ShotRegenerationInput,
 ) -> JoiResult<ShotRegenerationResult> {
     regenerate_shot(state.inner(), input)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn joi_get_prompt_adapter_profiles() -> Vec<PromptAdapterProfile> {
+    get_prompt_adapter_profiles()
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn joi_generate_prompt_packages(
+    state: State<'_, AppState>,
+    input: PromptGenerationInput,
+) -> JoiResult<PromptGenerationResult> {
+    generate_prompt_packages(state.inner(), input)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn joi_list_prompt_packages(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> JoiResult<Vec<PromptPackageView>> {
+    list_prompt_packages(state.inner(), project_id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn joi_update_prompt_package(
+    state: State<'_, AppState>,
+    input: PromptPackageUpdateInput,
+) -> JoiResult<PromptPackageView> {
+    update_prompt_package(state.inner(), input)
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -643,6 +686,51 @@ pub fn regenerate_shot(
         input,
         runtime_status.hermes_version,
     )
+}
+
+pub fn get_prompt_adapter_profiles() -> Vec<PromptAdapterProfile> {
+    prompt_adapter_profiles()
+}
+
+pub fn generate_prompt_packages(
+    state: &AppState,
+    input: PromptGenerationInput,
+) -> JoiResult<PromptGenerationResult> {
+    let runtime_status = get_agent_runtime_status(state)?;
+    let db = lock_db(state)?;
+    generate_prompt_packages_service(
+        &Repository::new(db.connection()),
+        input,
+        runtime_status.hermes_version,
+    )
+}
+
+pub fn list_prompt_packages(
+    state: &AppState,
+    project_id: String,
+) -> JoiResult<Vec<PromptPackageView>> {
+    let db = lock_db(state)?;
+    let packages = Repository::new(db.connection())
+        .list_prompt_packages(&project_id)?
+        .into_iter()
+        .map(prompt_package_view)
+        .collect::<Vec<_>>();
+    Ok(packages)
+}
+
+pub fn update_prompt_package(
+    state: &AppState,
+    input: PromptPackageUpdateInput,
+) -> JoiResult<PromptPackageView> {
+    let db = lock_db(state)?;
+    let package = Repository::new(db.connection()).update_prompt_package(PromptPackageUpdate {
+        id: input.id,
+        prompt_text: input.prompt_text,
+        negative_prompt: input.negative_prompt,
+        parameters_json: input.parameters_json,
+        is_locked: input.is_locked,
+    })?;
+    Ok(prompt_package_view(package))
 }
 
 pub fn generate_brief_understanding(

@@ -7,19 +7,22 @@ use common::TestApp;
 use joi_agent_lib::agent_runtime::AgentPlanInput;
 use joi_agent_lib::commands::{
     create_brand, create_memory_entry, create_project, create_reference_asset,
-    generate_brief_understanding, generate_memory_candidates, generate_research_report,
-    generate_storyboard, get_agent_runtime_status, get_brand, get_project, joi_health_check,
-    list_agent_runs, list_brands, list_creative_directions, list_memory_entries,
-    list_product_understandings, list_project_versions, list_projects, list_research_reports,
+    generate_brief_understanding, generate_memory_candidates, generate_prompt_packages,
+    generate_research_report, generate_storyboard, get_agent_runtime_status, get_brand,
+    get_project, get_prompt_adapter_profiles, joi_health_check, list_agent_runs, list_brands,
+    list_creative_directions, list_memory_entries, list_product_understandings,
+    list_project_versions, list_projects, list_prompt_packages, list_research_reports,
     list_storyboards, regenerate_shot, resolve_workspace_root, save_project_snapshot,
-    start_agent_plan, update_brand, update_memory_status, update_project, update_shot, AppState,
-    AssetImportCommandInput, BrandInput, BrandUpdateInput, MemoryEntryInput, MemoryListInput,
-    MemoryStatusInput, ProjectExportCommandInput, ProjectImportCommandInput, ProjectInput,
-    ProjectUpdateInput, ReferenceAssetInput, RestoreVersionInput, ShotUpdateInput, SnapshotInput,
+    start_agent_plan, update_brand, update_memory_status, update_project, update_prompt_package,
+    update_shot, AppState, AssetImportCommandInput, BrandInput, BrandUpdateInput, MemoryEntryInput,
+    MemoryListInput, MemoryStatusInput, ProjectExportCommandInput, ProjectImportCommandInput,
+    ProjectInput, ProjectUpdateInput, PromptPackageUpdateInput, ReferenceAssetInput,
+    RestoreVersionInput, ShotUpdateInput, SnapshotInput,
 };
 use joi_agent_lib::db::Database;
 use joi_agent_lib::error::JoiError;
 use joi_agent_lib::memory_curation::MemoryCurationInput;
+use joi_agent_lib::prompt_adapter::PromptGenerationInput;
 use joi_agent_lib::research::{ResearchReportInput, ResearchSourceInput};
 use joi_agent_lib::storyboard::{ShotRegenerationInput, StoryboardGenerationInput};
 use joi_agent_lib::understanding::BriefUnderstandingInput;
@@ -217,6 +220,26 @@ fn command_inputs_round_trip_through_json() {
     }))
     .expect("shot regeneration input");
     assert_eq!(shot_regeneration.shot_id, "shot-1");
+
+    let prompt_generation: PromptGenerationInput = serde_json::from_value(json!({
+        "project_id": "project-1",
+        "shot_ids": ["shot-1"],
+        "image_brief": "",
+        "target_platforms": ["jimeng_video", "grok_video"],
+        "user_direction": "Keep prompts concise."
+    }))
+    .expect("prompt generation input");
+    assert_eq!(prompt_generation.target_platforms.len(), 2);
+
+    let prompt_update: PromptPackageUpdateInput = serde_json::from_value(json!({
+        "id": "prompt-1",
+        "prompt_text": "edited prompt",
+        "negative_prompt": "edited negative",
+        "parameters_json": {"format_version": "joi.prompt_package_parameters.v1"},
+        "is_locked": true
+    }))
+    .expect("prompt update input");
+    assert!(prompt_update.is_locked);
 }
 
 #[test]
@@ -735,6 +758,93 @@ fn state_helpers_generate_list_update_and_regenerate_storyboard() {
         "local_storyboard_regeneration_bridge"
     );
     assert_eq!(regenerated.shot.shot.id, result.shots[1].shot.id);
+}
+
+#[test]
+fn state_helpers_generate_list_and_update_prompt_packages() {
+    let (_app, state) = test_state();
+    let brand = create_brand(
+        &state,
+        BrandInput {
+            name: "Atelier Joi".to_string(),
+            description: "Premium womenswear".to_string(),
+        },
+    )
+    .expect("brand");
+    let project = create_project(
+        &state,
+        ProjectInput {
+            brand_id: brand.id,
+            title: "Spring Drop Film".to_string(),
+            advertising_goal: "Launch awareness for a lightweight trench".to_string(),
+            duration_seconds: 15,
+        },
+    )
+    .expect("project");
+    generate_brief_understanding(
+        &state,
+        BriefUnderstandingInput {
+            project_id: project.id.clone(),
+            brief_text: "15 second outerwear launch ad".to_string(),
+            product_name: "Lightweight trench".to_string(),
+            category: "outerwear".to_string(),
+            audience: "urban commuters".to_string(),
+            target_platforms: vec!["jimeng_video".to_string(), "grok_video".to_string()],
+            selling_points_text: "water-resistant cotton, soft structure, easy movement"
+                .to_string(),
+            visual_direction: "clean studio walk with close fabric texture".to_string(),
+            constraints_text: "avoid heavy winter styling".to_string(),
+            reference_asset_ids: Vec::new(),
+        },
+    )
+    .expect("understanding");
+    let storyboard = generate_storyboard(
+        &state,
+        StoryboardGenerationInput {
+            project_id: project.id.clone(),
+            user_direction: "Make the opening tactile.".to_string(),
+            preferred_duration_seconds: Some(15),
+            preferred_shot_count: Some(5),
+        },
+    )
+    .expect("storyboard");
+
+    let profiles = get_prompt_adapter_profiles();
+    assert_eq!(profiles.len(), 5);
+
+    let result = generate_prompt_packages(
+        &state,
+        PromptGenerationInput {
+            project_id: project.id.clone(),
+            shot_ids: vec![storyboard.shots[0].shot.id.clone()],
+            image_brief: "Full-body studio model photo.".to_string(),
+            target_platforms: vec!["jimeng_video".into(), "gpt_image_2".into()],
+            user_direction: "Make output production-ready.".into(),
+        },
+    )
+    .expect("prompt generation");
+
+    assert_eq!(result.packages.len(), 2);
+    assert_eq!(result.agent_run.runtime_mode, "local_prompt_adapter_bridge");
+    assert_eq!(result.agent_events.len(), 5);
+
+    let listed = list_prompt_packages(&state, project.id).expect("listed prompts");
+    assert_eq!(listed.len(), 2);
+
+    let updated = update_prompt_package(
+        &state,
+        PromptPackageUpdateInput {
+            id: listed[0].package.id.clone(),
+            prompt_text: "edited prompt".into(),
+            negative_prompt: "edited negative".into(),
+            parameters_json: listed[0].package.parameters_json.clone(),
+            is_locked: true,
+        },
+    )
+    .expect("updated prompt");
+    assert_eq!(updated.package.prompt_text, "edited prompt");
+    assert_eq!(updated.package.negative_prompt, "edited negative");
+    assert!(updated.package.is_locked);
 }
 
 #[test]
