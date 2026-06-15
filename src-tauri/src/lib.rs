@@ -10,6 +10,7 @@ pub mod memory_curation;
 pub mod models;
 pub mod project_package;
 pub mod prompt_adapter;
+pub mod quality_review;
 pub mod repositories;
 pub mod research;
 pub mod snapshots;
