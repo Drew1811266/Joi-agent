@@ -1,6 +1,7 @@
 pub mod agent_context;
 pub mod agent_runtime;
 pub mod assets;
+pub mod beta_workflow;
 pub mod commands;
 pub mod db;
 pub mod delivery_report;
