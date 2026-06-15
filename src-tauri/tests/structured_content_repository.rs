@@ -5,7 +5,8 @@ use joi_agent_lib::db::Database;
 use joi_agent_lib::error::JoiError;
 use joi_agent_lib::repositories::{
     BrandCreate, CreativeDirectionCreate, ProductUnderstandingCreate, ProjectCreate,
-    PromptPackageCreate, Repository, ResearchReportCreate, ShotCreate, StoryboardCreate,
+    PromptPackageCreate, Repository, ResearchReportCreate, ShotCreate, ShotPlanCreate, ShotUpdate,
+    StoryboardCreate,
 };
 use serde_json::json;
 
@@ -201,6 +202,196 @@ fn stores_storyboard_shots_and_prompt_packages() {
     assert_eq!(prompts[0].negative_prompt, "");
     assert!(!prompts[0].is_locked);
     assert_eq!(prompts[0].parameters_json, json!({}));
+}
+
+#[test]
+fn creates_shot_plan_with_visible_storyboard_fields() {
+    let app = TestApp::new();
+    let db = Database::open(&app.db_path).expect("open database");
+    db.migrate().expect("migrate");
+    let (repo, project_id) = seeded_repo(&db);
+    let storyboard = repo
+        .create_storyboard(StoryboardCreate {
+            project_id,
+            title: "15s spring launch film".into(),
+            duration_seconds: 15,
+        })
+        .expect("storyboard");
+
+    let shot = repo
+        .create_shot_plan(ShotPlanCreate {
+            storyboard_id: storyboard.id,
+            shot_number: 1,
+            duration_seconds: 3,
+            visual_description: "Model enters a clean studio frame wearing the trench.".into(),
+            model_action: "Model walks forward and turns slightly toward camera.".into(),
+            garment_focus: "relaxed trench silhouette and water-resistant cotton".into(),
+            camera_movement: "slow push-in".into(),
+            scene: "minimal warm studio".into(),
+            lighting: "soft side light".into(),
+            transition: "cut on movement".into(),
+            subtitle_or_text: "Light enough for changing weather".into(),
+            rationale: "Opening shot establishes product and brand mood.".into(),
+            source_memory_ids: vec!["memory-1".into()],
+            source_research_report_ids: vec!["report-1".into()],
+            generation_context: json!({
+                "stage": "0.16",
+                "source": "storyboard_generation",
+                "selling_point": "water-resistant cotton"
+            }),
+        })
+        .expect("shot plan");
+
+    assert_eq!(
+        shot.description,
+        "Model enters a clean studio frame wearing the trench."
+    );
+    assert_eq!(
+        shot.model_action,
+        "Model walks forward and turns slightly toward camera."
+    );
+    assert_eq!(shot.camera_movement, "slow push-in");
+    assert_eq!(shot.scene, "minimal warm studio");
+    assert_eq!(shot.lighting, "soft side light");
+    assert_eq!(
+        shot.subtitle_or_voiceover,
+        "Light enough for changing weather"
+    );
+    assert_eq!(
+        shot.rationale,
+        "Opening shot establishes product and brand mood."
+    );
+    assert_eq!(shot.metadata_json["format_version"], "joi.shot_metadata.v1");
+    assert_eq!(
+        shot.metadata_json["garment_focus"],
+        "relaxed trench silhouette and water-resistant cotton"
+    );
+    assert_eq!(shot.metadata_json["transition"], "cut on movement");
+    assert_eq!(shot.metadata_json["source_memory_ids"], json!(["memory-1"]));
+    assert_eq!(
+        shot.metadata_json["source_research_report_ids"],
+        json!(["report-1"])
+    );
+}
+
+#[test]
+fn updates_shot_details_and_preserves_source_metadata() {
+    let app = TestApp::new();
+    let db = Database::open(&app.db_path).expect("open database");
+    db.migrate().expect("migrate");
+    let (repo, project_id) = seeded_repo(&db);
+    let storyboard = repo
+        .create_storyboard(StoryboardCreate {
+            project_id,
+            title: "15s spring launch film".into(),
+            duration_seconds: 15,
+        })
+        .expect("storyboard");
+    let shot = repo
+        .create_shot_plan(ShotPlanCreate {
+            storyboard_id: storyboard.id,
+            shot_number: 1,
+            duration_seconds: 3,
+            visual_description: "Original description".into(),
+            model_action: "Original action".into(),
+            garment_focus: "Original garment focus".into(),
+            camera_movement: "Original camera".into(),
+            scene: "Original scene".into(),
+            lighting: "Original lighting".into(),
+            transition: "Original transition".into(),
+            subtitle_or_text: "Original text".into(),
+            rationale: "Original rationale".into(),
+            source_memory_ids: vec!["memory-1".into()],
+            source_research_report_ids: vec!["report-1".into()],
+            generation_context: json!({
+                "stage": "0.16",
+                "source": "storyboard_generation"
+            }),
+        })
+        .expect("shot");
+
+    let updated = repo
+        .update_shot(ShotUpdate {
+            id: shot.id,
+            duration_seconds: 4,
+            visual_description: "Close texture detail fills the frame.".into(),
+            model_action: "Model lifts sleeve edge to reveal fabric movement.".into(),
+            garment_focus: "fabric texture and sleeve construction".into(),
+            camera_movement: "macro slide".into(),
+            scene: "studio detail insert".into(),
+            lighting: "grazing highlight".into(),
+            transition: "match cut to walking shot".into(),
+            subtitle_or_text: "Texture that moves".into(),
+            rationale: "Edited to make product proof more specific.".into(),
+            is_locked: true,
+        })
+        .expect("update shot");
+
+    assert_eq!(updated.duration_seconds, 4);
+    assert_eq!(updated.description, "Close texture detail fills the frame.");
+    assert_eq!(
+        updated.model_action,
+        "Model lifts sleeve edge to reveal fabric movement."
+    );
+    assert!(updated.is_locked);
+    assert_eq!(
+        updated.metadata_json["garment_focus"],
+        "fabric texture and sleeve construction"
+    );
+    assert_eq!(
+        updated.metadata_json["transition"],
+        "match cut to walking shot"
+    );
+    assert_eq!(
+        updated.metadata_json["source_memory_ids"],
+        json!(["memory-1"])
+    );
+    assert_eq!(
+        updated.metadata_json["source_research_report_ids"],
+        json!(["report-1"])
+    );
+}
+
+#[test]
+fn lists_storyboards_with_typed_shots_for_project() {
+    let app = TestApp::new();
+    let db = Database::open(&app.db_path).expect("open database");
+    db.migrate().expect("migrate");
+    let (repo, project_id) = seeded_repo(&db);
+    let storyboard = repo
+        .create_storyboard(StoryboardCreate {
+            project_id: project_id.clone(),
+            title: "15s spring launch film".into(),
+            duration_seconds: 15,
+        })
+        .expect("storyboard");
+    repo.create_shot_plan(ShotPlanCreate {
+        storyboard_id: storyboard.id.clone(),
+        shot_number: 1,
+        duration_seconds: 3,
+        visual_description: "Opening product entrance.".into(),
+        model_action: "Model enters frame.".into(),
+        garment_focus: "outerwear silhouette".into(),
+        camera_movement: "push in".into(),
+        scene: "studio".into(),
+        lighting: "soft".into(),
+        transition: "cut".into(),
+        subtitle_or_text: String::new(),
+        rationale: "Establish the product.".into(),
+        source_memory_ids: Vec::new(),
+        source_research_report_ids: Vec::new(),
+        generation_context: json!({"stage": "0.16"}),
+    })
+    .expect("shot");
+
+    let storyboards = repo
+        .list_storyboards_with_typed_shots(&project_id)
+        .expect("storyboards with shots");
+
+    assert_eq!(storyboards.len(), 1);
+    assert_eq!(storyboards[0].storyboard.id, storyboard.id);
+    assert_eq!(storyboards[0].shots.len(), 1);
+    assert_eq!(storyboards[0].shots[0].shot_number, 1);
 }
 
 #[test]

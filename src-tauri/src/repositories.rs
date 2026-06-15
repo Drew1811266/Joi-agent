@@ -92,12 +92,53 @@ pub struct StoryboardCreate {
     pub duration_seconds: i64,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct StoryboardWithShots {
+    pub storyboard: Storyboard,
+    pub shots: Vec<Shot>,
+}
+
 #[derive(Debug, Clone)]
 pub struct ShotCreate {
     pub storyboard_id: String,
     pub shot_number: i64,
     pub duration_seconds: i64,
     pub description: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ShotPlanCreate {
+    pub storyboard_id: String,
+    pub shot_number: i64,
+    pub duration_seconds: i64,
+    pub visual_description: String,
+    pub model_action: String,
+    pub garment_focus: String,
+    pub camera_movement: String,
+    pub scene: String,
+    pub lighting: String,
+    pub transition: String,
+    pub subtitle_or_text: String,
+    pub rationale: String,
+    pub source_memory_ids: Vec<String>,
+    pub source_research_report_ids: Vec<String>,
+    pub generation_context: Value,
+}
+
+#[derive(Debug, Clone)]
+pub struct ShotUpdate {
+    pub id: String,
+    pub duration_seconds: i64,
+    pub visual_description: String,
+    pub model_action: String,
+    pub garment_focus: String,
+    pub camera_movement: String,
+    pub scene: String,
+    pub lighting: String,
+    pub transition: String,
+    pub subtitle_or_text: String,
+    pub rationale: String,
+    pub is_locked: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -595,6 +636,22 @@ impl<'a> Repository<'a> {
         Ok(storyboard)
     }
 
+    pub fn get_storyboard(&self, id: &str) -> JoiResult<Storyboard> {
+        self.connection
+            .query_row(
+                "SELECT id, project_id, title, duration_seconds, created_at, updated_at
+                 FROM storyboards WHERE id = ?1",
+                params![id],
+                map_storyboard,
+            )
+            .map_err(|err| match err {
+                rusqlite::Error::QueryReturnedNoRows => {
+                    JoiError::NotFound(format!("storyboard {}", id))
+                }
+                other => other.into(),
+            })
+    }
+
     pub fn create_shot(&self, input: ShotCreate) -> JoiResult<Shot> {
         if input.shot_number <= 0 {
             return Err(JoiError::Validation(
@@ -645,6 +702,134 @@ impl<'a> Repository<'a> {
             ],
         )?;
         Ok(shot)
+    }
+
+    pub fn create_shot_plan(&self, input: ShotPlanCreate) -> JoiResult<Shot> {
+        if input.shot_number <= 0 {
+            return Err(JoiError::Validation(
+                "Shot number must be positive".to_string(),
+            ));
+        }
+        validate_positive("Shot duration", input.duration_seconds)?;
+        validate_required_text("Shot visual description", &input.visual_description)?;
+        validate_required_text("Shot model action", &input.model_action)?;
+        validate_required_text("Shot garment focus", &input.garment_focus)?;
+        validate_required_text("Shot camera movement", &input.camera_movement)?;
+        validate_required_text("Shot scene", &input.scene)?;
+        validate_required_text("Shot rationale", &input.rationale)?;
+        self.get_storyboard(&input.storyboard_id)?;
+
+        let now = Utc::now();
+        let metadata_json = shot_plan_metadata(&input);
+        let shot = Shot {
+            id: new_id(),
+            storyboard_id: input.storyboard_id,
+            shot_number: input.shot_number,
+            duration_seconds: input.duration_seconds,
+            description: input.visual_description.trim().to_string(),
+            model_action: input.model_action.trim().to_string(),
+            camera_movement: input.camera_movement.trim().to_string(),
+            scene: input.scene.trim().to_string(),
+            lighting: input.lighting.trim().to_string(),
+            subtitle_or_voiceover: input.subtitle_or_text.trim().to_string(),
+            rationale: input.rationale.trim().to_string(),
+            is_locked: false,
+            metadata_json,
+            created_at: now,
+            updated_at: now,
+        };
+        self.connection.execute(
+            "INSERT INTO shots (
+                id, storyboard_id, shot_number, duration_seconds, description, model_action,
+                camera_movement, scene, lighting, subtitle_or_voiceover, rationale, is_locked,
+                metadata_json, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            params![
+                shot.id,
+                shot.storyboard_id,
+                shot.shot_number,
+                shot.duration_seconds,
+                shot.description,
+                shot.model_action,
+                shot.camera_movement,
+                shot.scene,
+                shot.lighting,
+                shot.subtitle_or_voiceover,
+                shot.rationale,
+                if shot.is_locked { 1 } else { 0 },
+                shot.metadata_json.to_string(),
+                shot.created_at.to_rfc3339(),
+                shot.updated_at.to_rfc3339()
+            ],
+        )?;
+        Ok(shot)
+    }
+
+    pub fn get_shot(&self, id: &str) -> JoiResult<Shot> {
+        self.connection
+            .query_row(
+                "SELECT id, storyboard_id, shot_number, duration_seconds, description, model_action,
+                        camera_movement, scene, lighting, subtitle_or_voiceover, rationale, is_locked,
+                        metadata_json, created_at, updated_at
+                 FROM shots WHERE id = ?1",
+                params![id],
+                map_shot,
+            )
+            .map_err(|err| match err {
+                rusqlite::Error::QueryReturnedNoRows => JoiError::NotFound(format!("shot {}", id)),
+                other => other.into(),
+            })
+    }
+
+    pub fn update_shot(&self, input: ShotUpdate) -> JoiResult<Shot> {
+        validate_positive("Shot duration", input.duration_seconds)?;
+        validate_required_text("Shot visual description", &input.visual_description)?;
+        validate_required_text("Shot model action", &input.model_action)?;
+        validate_required_text("Shot garment focus", &input.garment_focus)?;
+        validate_required_text("Shot camera movement", &input.camera_movement)?;
+        validate_required_text("Shot scene", &input.scene)?;
+        validate_required_text("Shot rationale", &input.rationale)?;
+
+        let existing = self.get_shot(&input.id)?;
+        let metadata_json = update_shot_metadata(
+            existing.metadata_json,
+            input.garment_focus.trim(),
+            input.transition.trim(),
+        );
+        let now = Utc::now();
+        let affected = self.connection.execute(
+            "UPDATE shots
+             SET duration_seconds = ?1,
+                 description = ?2,
+                 model_action = ?3,
+                 camera_movement = ?4,
+                 scene = ?5,
+                 lighting = ?6,
+                 subtitle_or_voiceover = ?7,
+                 rationale = ?8,
+                 is_locked = ?9,
+                 metadata_json = ?10,
+                 updated_at = ?11
+             WHERE id = ?12",
+            params![
+                input.duration_seconds,
+                input.visual_description.trim(),
+                input.model_action.trim(),
+                input.camera_movement.trim(),
+                input.scene.trim(),
+                input.lighting.trim(),
+                input.subtitle_or_text.trim(),
+                input.rationale.trim(),
+                if input.is_locked { 1 } else { 0 },
+                metadata_json.to_string(),
+                now.to_rfc3339(),
+                input.id
+            ],
+        )?;
+        if affected == 0 {
+            return Err(JoiError::NotFound(format!("shot {}", input.id)));
+        }
+        self.get_shot(&input.id)
     }
 
     pub fn create_prompt_package(&self, input: PromptPackageCreate) -> JoiResult<PromptPackage> {
@@ -981,6 +1166,19 @@ impl<'a> Repository<'a> {
         collect_rows(rows)
     }
 
+    pub fn list_storyboards_with_typed_shots(
+        &self,
+        project_id: &str,
+    ) -> JoiResult<Vec<StoryboardWithShots>> {
+        let storyboards = self.list_storyboards(project_id)?;
+        let mut values = Vec::with_capacity(storyboards.len());
+        for storyboard in storyboards {
+            let shots = self.list_shots(&storyboard.id)?;
+            values.push(StoryboardWithShots { storyboard, shots });
+        }
+        Ok(values)
+    }
+
     pub fn list_shots(&self, storyboard_id: &str) -> JoiResult<Vec<Shot>> {
         let mut statement = self.connection.prepare(
             "SELECT id, storyboard_id, shot_number, duration_seconds, description, model_action,
@@ -1091,6 +1289,47 @@ fn collect_rows<T>(rows: impl Iterator<Item = rusqlite::Result<T>>) -> JoiResult
         values.push(row?);
     }
     Ok(values)
+}
+
+fn validate_positive(label: &str, value: i64) -> JoiResult<()> {
+    if value <= 0 {
+        return Err(JoiError::Validation(format!("{label} must be positive")));
+    }
+    Ok(())
+}
+
+fn shot_plan_metadata(input: &ShotPlanCreate) -> Value {
+    json!({
+        "format_version": "joi.shot_metadata.v1",
+        "garment_focus": input.garment_focus.trim(),
+        "transition": input.transition.trim(),
+        "source_memory_ids": &input.source_memory_ids,
+        "source_research_report_ids": &input.source_research_report_ids,
+        "generation_context": &input.generation_context,
+    })
+}
+
+fn update_shot_metadata(existing: Value, garment_focus: &str, transition: &str) -> Value {
+    let mut metadata = match existing {
+        Value::Object(map) => Value::Object(map),
+        _ => json!({}),
+    };
+    let object = metadata
+        .as_object_mut()
+        .expect("object value created from map or empty object");
+    object.insert("format_version".to_string(), json!("joi.shot_metadata.v1"));
+    object.insert("garment_focus".to_string(), json!(garment_focus));
+    object.insert("transition".to_string(), json!(transition));
+    object
+        .entry("source_memory_ids".to_string())
+        .or_insert_with(|| json!([]));
+    object
+        .entry("source_research_report_ids".to_string())
+        .or_insert_with(|| json!([]));
+    object
+        .entry("generation_context".to_string())
+        .or_insert_with(|| json!({"stage": "0.16", "source": "user_edit"}));
+    metadata
 }
 
 fn parse_time(value: String, column_index: usize) -> rusqlite::Result<chrono::DateTime<Utc>> {
